@@ -42,18 +42,18 @@ func (into *AlphaESSProxyConnection) copyProxyConnection(dst io.ReadWriteCloser,
 			}
 			if operr.Op == "read" {
 				if srcname == "proxyserver" {
-					anyproxy.incrProxyServerReadErr()
+					anyproxy.IncrProxyServerReadErr()
 				}
 				if srcname == "directserver" {
-					anyproxy.incrDirectServerReadErr()
+					anyproxy.IncrDirectServerReadErr()
 				}
 			}
 			if operr.Op == "write" {
 				if srcname == "proxyserver" {
-					anyproxy.incrProxyServerWriteErr()
+					anyproxy.IncrProxyServerWriteErr()
 				}
 				if srcname == "directserver" {
-					anyproxy.incrDirectServerWriteErr()
+					anyproxy.IncrDirectServerWriteErr()
 				}
 			}
 		}
