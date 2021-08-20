@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 )
+
 //	"rk-go-any-proxy/anyproxy/anyproxy"
 
 type AlphaESSProxyConnection struct {
@@ -41,18 +42,18 @@ func (into *AlphaESSProxyConnection) copyProxyConnection(dst io.ReadWriteCloser,
 			}
 			if operr.Op == "read" {
 				if srcname == "proxyserver" {
-					incrProxyServerReadErr()
+					anyproxy.incrProxyServerReadErr()
 				}
 				if srcname == "directserver" {
-					incrDirectServerReadErr()
+					anyproxy.incrDirectServerReadErr()
 				}
 			}
 			if operr.Op == "write" {
 				if srcname == "proxyserver" {
-					incrProxyServerWriteErr()
+					anyproxy.incrProxyServerWriteErr()
 				}
 				if srcname == "directserver" {
-					incrDirectServerWriteErr()
+					anyproxy.incrDirectServerWriteErr()
 				}
 			}
 		}
