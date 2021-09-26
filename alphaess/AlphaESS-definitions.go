@@ -4,27 +4,31 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"time"
 )
 
-type AlphaessAuth struct {
+//const DefaultExpiry = 1500 // seconds after which to expire a sensor value;
+
+type AuthRQ struct {
 	UserName    string `json:"UserName"`
 	Password    string `json:"Password"`
 	CompanyName string `json:"CompanyName"`
 }
 
-type AlphaESSGeneric struct {
+type SuccessRS struct {
+	Status string `json:"Status"`
+}
+
+type GenericRQ struct {
 	MsgType     string `json:"MsgType"`
 	MsgContent  string `json:"MsgContent"`
 	Description string `json:"Description"`
 }
 
-type AlphaESSSerial struct {
+type SerialRQ struct {
 	SN string `json:"SN"`
 }
-type AlphaessStatus struct {
-	//_        struct{}    `type:"structure"`
+type StatusRQ struct {
 	Time     Timestamp `json:"Time"`
 	SN       string    `json:"SN"`
 	Ppv1     int       `json:"Ppv1,string"`
@@ -41,9 +45,23 @@ type AlphaessStatus struct {
 	VarAC    int       `json:"VarAC,string"`
 	VarDC    int       `json:"VarDC,string"`
 	SOC      float32   `type:"float32" json:"SOC,string"`
-	//json:"SOC"`
 }
-type AlphaessBattery struct {
+
+// CommandRQ {"Command":"SetConfig","CmdIndex":"35235904"}
+type CommandRQ struct {
+	Command  string `json:"Command"`
+	CmdIndex string `json:"CmdIndex"`
+}
+
+// CommandIndexRQ {"CmdIndex":"80867000","Command":"Resume","Parameter1":"2021/08/27 23:16:32","Parameter2":"10"}
+type CommandIndexRQ struct {
+	CmdIndex   string `json:"CmdIndex"`
+	Command    string `json:"Command"`
+	Parameter1 string `json:"Parameter1"`
+	Parameter2 string `json:"Parameter2"`
+}
+
+type BatteryRQ struct {
 	Time           time.Time `json:"Time"`
 	SN             string    `json:"SN"`
 	Ppv1           string    `json:"Ppv1"`
@@ -181,7 +199,7 @@ type AlphaessBattery struct {
 	CSQ            string    `json:"CSQ"`
 }
 
-type AlphaessConfig struct {
+type ConfigRS struct {
 	SN                 string `json:"SN"`
 	Address            string `json:"Address"`
 	ZipCode            string `json:"ZipCode"`
@@ -320,7 +338,7 @@ type AlphaessConfig struct {
 	WifiHW             string `json:"WifiHW"`
 }
 
-type AlphaessResponse interface{}
+type Response interface{}
 
 type Timestamp struct {
 	time.Time
@@ -331,186 +349,98 @@ func (p *Timestamp) UnmarshalJSON(bytes []byte) error {
 	// 1. Decode the bytes into an int64
 	var raw string
 	err := json.Unmarshal(bytes, &raw)
-
 	if err != nil {
 		fmt.Printf("error decoding timestamp: %s\n", err)
 		return err
 	}
-	debugLog("out:" + string(raw))
 	// 2 - Parse the unix timestamp "2021/08/15 00:27:34"
-	*&p.Time, err = time.ParseInLocation("2006/01/02 15:04:05", string(raw), time.UTC)
-	//time.Unix(raw, 0)
+	loc, _ := time.LoadLocation(gLocation)
+	*&p.Time, err = time.ParseInLocation(
+		"2006/01/02 15:04:05",
+		raw,
+		loc,
+	)
 	return nil
 }
 
-func UnmarshalJSON(rawData []byte) (result AlphaessResponse, err error) {
-	//dec := json.NewDecoder(bytes.NewReader(d))
-	//_, _ = dec.Token() // Consume opening "["
+func UnmarshalJSON(rawData []byte) (result Response, err error) {
 	result = nil
 	if bytes.Index(rawData, []byte("\"Time\"")) >= 0 {
-		var jsonResult AlphaessStatus
-		//asciData := strconv.QuoteToASCII(string(rawData))
-		err = json.Unmarshal([]byte(rawData), &jsonResult)
+		var jsonResult StatusRQ
+		err = json.Unmarshal(rawData, &jsonResult)
 		if len(jsonResult.SN) < 5 {
-			//errorLog("SN:::::::::::" +  jsonResult.SN + "[[" + string(rawData[0]) + ":" + string(rawData[len(rawData)-1]))
-			errorLog("decoding AlphaessStatus " + string(rawData))
+			ErrorLog("decoding StatusRQ " + string(rawData))
 		} else {
 			result = jsonResult
 		}
 	} else if bytes.Index(rawData, []byte("time")) >= 0 {
-		jsonResult := AlphaessBattery{}
+		jsonResult := BatteryRQ{}
 		err = json.Unmarshal(rawData, &jsonResult)
 		if len(jsonResult.SN) < 5 {
-			errorLog("decoding AlphaessBattery" + string(rawData))
+			ErrorLog("decoding BatteryRQ" + string(rawData))
 		} else {
 			result = jsonResult
 		}
 	} else if bytes.Index(rawData, []byte("ZipCode")) >= 0 {
-		jsonResult := AlphaessConfig{}
+		jsonResult := ConfigRS{}
 		err = json.Unmarshal(rawData, &jsonResult)
 		if len(jsonResult.ZipCode) == 0 {
-			errorLog("decoding AlphaessConfig" + string(rawData))
+			ErrorLog("decoding ConfigRS" + string(rawData))
 		} else {
 			result = jsonResult
 		}
 	} else if bytes.Index(rawData, []byte("UserName")) >= 0 {
-		jsonResult := AlphaessAuth{}
+		jsonResult := AuthRQ{}
 		err = json.Unmarshal(rawData, &jsonResult)
 		if len(jsonResult.UserName) == 0 {
-			errorLog("decoding AlphaessAuth" + string(rawData))
+			ErrorLog("decoding AuthRQ" + string(rawData))
+		} else {
+			result = jsonResult
+		}
+	} else if bytes.Index(rawData, []byte("\"Status\"")) >= 0 {
+		jsonResult := SuccessRS{}
+		err = json.Unmarshal(rawData, &jsonResult)
+		if len(jsonResult.Status) == 0 {
+			ErrorLog("decoding SuccessRS" + string(rawData))
+		} else {
+			result = jsonResult
+		}
+	} else if bytes.Index(rawData, []byte("{\"SN\"")) >= 0 {
+		jsonResult := SerialRQ{}
+		err = json.Unmarshal(rawData, &jsonResult)
+		if len(jsonResult.SN) == 0 {
+			ErrorLog("decoding SerialRQ" + string(rawData))
+		} else {
+			result = jsonResult
+		}
+	} else if bytes.Index(rawData, []byte("{\"Command\"")) >= 0 {
+		jsonResult := CommandRQ{}
+		err = json.Unmarshal(rawData, &jsonResult)
+		if len(jsonResult.CmdIndex) == 0 {
+			ErrorLog("decoding CommandRQ" + string(rawData))
+		} else {
+			result = jsonResult
+		}
+	} else if bytes.Index(rawData, []byte("{\"CmdIndex\"")) >= 0 {
+		jsonResult := CommandIndexRQ{}
+		err = json.Unmarshal(rawData, &jsonResult)
+		if len(jsonResult.CmdIndex) == 0 {
+			ErrorLog("decoding CommandIndexRQ" + string(rawData))
 		} else {
 			result = jsonResult
 		}
 	} else {
-		jsonResult := AlphaESSGeneric{}
-		err = json.Unmarshal([]byte(rawData), &jsonResult)
+		jsonResult := GenericRQ{}
+		err = json.Unmarshal(rawData, &jsonResult)
 		if err == nil {
 			if len(jsonResult.MsgType) == 0 {
-				errorLog("decoding GenericType: " + string(rawData))
+				ErrorLog("decoding GenericRQ: " + string(rawData))
 			} else {
 				result = jsonResult
 			}
 		} else {
-			debugLog("unknown message type, trying generic: " + err.Error())
+			DebugLog("unknown message type, trying GenericRQ: " + err.Error())
 		}
 	}
-	//*r = result
 	return
-}
-
-func publishAlphaESSStats(obj AlphaessResponse, client mqtt.Client) {
-	//publishMQTT(TOPIC, obj.)
-	//TODO publish!!!
-	var destination string
-	//var res string
-	switch v := obj.(type) {
-	case AlphaessStatus:
-		debugLog(fmt.Sprint("AlphaessStatus::", v))
-		destination = "/state"
-		res, _ := json.Marshal(v)
-		publishMQTT(MQTTTopic+destination, string(res))
-		//destination = "/state"
-		//publishMQTT(MQTTTopic + destination, "testing")
-	case AlphaessBattery:
-		destination = "/state"
-		res, _ := json.Marshal(v)
-		publishMQTT(MQTTTopic+destination, string(res))
-		debugLog(fmt.Sprint("AlphaessBattery::", v))
-	case AlphaessConfig:
-		destination = "/attributes"
-		res, _ := json.Marshal(v)
-		publishMQTT(MQTTTopic+destination, string(res))
-		debugLog(fmt.Sprint("AlphaessBattery::", v))
-	default:
-		debugLog(fmt.Sprint("Ignored message type::", v))
-	}
-}
-
-func PublishHASEntityConfig() {
-	// discovery definition: https://www.home-assistant.io/docs/mqtt/discovery/
-	// device class & Unit of measurements from: https://github.com/home-assistant/core/blob/d7ac4bd65379e11461c7ce0893d3533d8d8b8cbf/homeassistant/const.py#L379
-	// device class descriptions from: https://www.home-assistant.io/integrations/sensor/
-
-	//Time     Timestamp `json:"Time"`			//{"Time":"2021/08/13 19:09:06",
-	var myHASConfig HasMQTTConfig
-	myHASConfig.StateTopic = MQTTTopic + "/state"
-
-	myHASConfig.Name = "AlphaESS - Last Updated"
-	myHASConfig.DeviceClass = "timestamp"
-	//myHASConfig.UnitOfMeasurement = ""
-	myHASConfig.ValueTemplate = "{{ value_json.Time}}"
-	res, _ := json.Marshal(myHASConfig)
-	publishMQTT(MQTTTopic+"/LastUpdateTime/config", string(res))
-
-	//SN    	 string `json:"SN"`				//	"SN":"AL2002321010043",
-	//Ppv1     int `json:"Ppv1,string"`			//	"Ppv1":"160",
-	//Ppv2     int `json:"Ppv2,string"`			//	"Ppv2":"273",
-
-	//PrealL1  float32 `json:"PrealL1,string"`	//	"PrealL1":"756",
-	myHASConfig.Name = "AlphaESS - Load1"
-	myHASConfig.DeviceClass = "power"
-	myHASConfig.UnitOfMeasurement = "W"
-	myHASConfig.ValueTemplate = "{{ value_json.PrealL1}}"
-	res, _ = json.Marshal(myHASConfig)
-	publishMQTT(MQTTTopic+"/PrealL1/config", string(res))
-
-	//PrealL2  float32 `json:"PrealL2,string"`
-	//PrealL3  float32 `json:"PrealL3,string"`
-	//PmeterL1 int `type:"integer" json:"PmeterL1,string"`
-	//PmeterL2 int `type:"integer" json:"PmeterL2,string"`
-	myHASConfig.Name = "AlphaESS - PowerMeter1"
-	myHASConfig.DeviceClass = "power"
-	myHASConfig.UnitOfMeasurement = "W"
-	myHASConfig.ValueTemplate = "{{ value_json.PmeterL1}}"
-	res, _ = json.Marshal(myHASConfig)
-	publishMQTT(MQTTTopic+"/PmeterL1/config", string(res))
-
-	myHASConfig.Name = "AlphaESS - PowerMeter2"
-	myHASConfig.DeviceClass = "power"
-	myHASConfig.UnitOfMeasurement = "W"
-	myHASConfig.ValueTemplate = "{{ value_json.PmeterL2}}"
-	res, _ = json.Marshal(myHASConfig)
-	publishMQTT(MQTTTopic+"/PmeterL2/config", string(res))
-
-	//PmeterL3 int `json:"PmeterL3,string"`
-	//PmeterDC int `json:"PmeterDC,string"`
-	//Pbat     float32 `json:"Pbat,string"`	//	"Pbat":"387.4500",
-	myHASConfig.Name = "AlphaESS - Battery Load"
-	myHASConfig.DeviceClass = "power"
-	myHASConfig.UnitOfMeasurement = "W"
-	myHASConfig.ValueTemplate = "{{ value_json.Pbat}}"
-	res, _ = json.Marshal(myHASConfig)
-	publishMQTT(MQTTTopic+"/Pbat/config", string(res))
-
-	//Sva      int `json:"Sva,string"`		//	"Sva":"826",
-	myHASConfig.Name = "AlphaESS - Solar Watts"
-	myHASConfig.DeviceClass = "power"
-	myHASConfig.UnitOfMeasurement = "W"
-	myHASConfig.ValueTemplate = "{{ value_json.Sva}}"
-	res, _ = json.Marshal(myHASConfig)
-	publishMQTT(MQTTTopic+"/Sva/config", string(res))
-
-	//VarAC    int `json:"VarAC,string"`	//	"VarAC":"-541",
-	myHASConfig.Name = "AlphaESS - Grid Power?"
-	myHASConfig.DeviceClass = "power"
-	myHASConfig.UnitOfMeasurement = "W"
-	myHASConfig.ValueTemplate = "{{ value_json.VarAC}}"
-	res, _ = json.Marshal(myHASConfig)
-	publishMQTT(MQTTTopic+"/VarAC/config", string(res))
-	//VarDC    int `json:"VarDC,string"`	//	"VarDC":"0",
-	myHASConfig.Name = "AlphaESS - DC Power"
-	myHASConfig.DeviceClass = "power"
-	myHASConfig.UnitOfMeasurement = "W"
-	myHASConfig.ValueTemplate = "{{ value_json.VarDC}}"
-	res, _ = json.Marshal(myHASConfig)
-	publishMQTT(MQTTTopic+"/VarDC/config", string(res))
-
-	//SOC      float32 `type:"float32" json:"SOC,string"` //"SOC":"24.0"}
-	myHASConfig.Name = "AlphaESS - State of Charge"
-	myHASConfig.DeviceClass = "battery"
-	myHASConfig.UnitOfMeasurement = "%"
-	myHASConfig.ValueTemplate = "{{ value_json.SOC}}"
-	res, _ = json.Marshal(myHASConfig)
-	publishMQTT(MQTTTopic+"/SOC/config", string(res))
-
 }
