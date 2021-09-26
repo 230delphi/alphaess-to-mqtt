@@ -1,0 +1,99 @@
+package alphaess
+
+import (
+	log "github.com/zdannar/flogger"
+	"io"
+	"os"
+)
+
+type MQTTInjectProxyConnection struct {
+	LogToFile bool
+}
+
+func (into *MQTTInjectProxyConnection) setLogToFile() {
+	into.LogToFile = true
+}
+
+func (into *MQTTInjectProxyConnection) SpawnBiDirectionalCopy(dst io.ReadWriteCloser, src io.ReadWriteCloser, dstName string, srcName string) {
+	//TODO either server impl, or switch from proxy
+	go into.CopyProxyConnection(dst, src, dstName, srcName)
+	go into.CopyAndInjectProxyConnection(src, dst, srcName, dstName)
+}
+
+func (into *MQTTInjectProxyConnection) CopyProxyConnection(dst io.ReadWriteCloser, src io.ReadWriteCloser, dstName string, srcName string) {
+	if dst == nil {
+		log.Debugf("copy(): oops, dst is nil!")
+		return
+	}
+	if src == nil {
+		log.Debugf("copy(): oops, src is nil!")
+		return
+	}
+	var err error
+	var output io.Writer
+	var mqttDst io.Writer = &MQTTWriter{mySource: srcName}
+	var buf2 io.ReadWriteCloser
+
+	if into.LogToFile {
+		//TODO test this logging mechanism - needed?
+		myFilename := getUniqueFilename(srcName)
+		log.Debugf("writing file", myFilename)
+		f, err := os.Create(myFilename)
+		CheckError(err)
+		buf2 = io.ReadWriteCloser(f)
+		output = io.MultiWriter(dst, mqttDst, buf2)
+	} else {
+		output = io.MultiWriter(dst, mqttDst)
+	}
+	_, err = io.Copy(output, src)
+
+	ExceptionLog(err)
+	if buf2 != nil {
+		_ = buf2.Close()
+	}
+
+	ReportStatistics(err, srcName, dstName)
+	err = dst.Close()
+	ExceptionLog(err)
+	err = src.Close()
+	ExceptionLog(err)
+}
+
+func (into *MQTTInjectProxyConnection) CopyAndInjectProxyConnection(dst io.ReadWriteCloser, src io.ReadWriteCloser, dstName string, srcName string) {
+	if dst == nil {
+		log.Debugf("copy(): oops, dst is nil!")
+		return
+	}
+	if src == nil {
+		log.Debugf("copy(): oops, src is nil!")
+		return
+	}
+	var err error
+	var output io.Writer
+	var mqttDst io.Writer = &MQTTWriter{mySource: srcName}
+	var buf2 io.ReadWriteCloser
+
+	if into.LogToFile {
+		//TODO test this logging mechanism - needed?
+		myFilename := getUniqueFilename(srcName)
+		log.Debugf("writing file", myFilename)
+		f, err := os.Create(myFilename)
+		CheckError(err)
+		buf2 = io.ReadWriteCloser(f)
+		output = io.MultiWriter(dst, mqttDst, buf2)
+	} else {
+		output = io.MultiWriter(dst, mqttDst)
+	}
+	_, err = io.Copy(output, src)
+
+	ExceptionLog(err)
+	if buf2 != nil {
+		_ = buf2.Close()
+	}
+
+	ReportStatistics(err, srcName, dstName)
+	err = dst.Close()
+	ExceptionLog(err)
+	err = src.Close()
+	ExceptionLog(err)
+}
