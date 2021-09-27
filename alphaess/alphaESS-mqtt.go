@@ -46,7 +46,6 @@ func initFlagConfig() {
 }
 
 func GetMQTTConnection() (result anyproxy.ProxyConnectionManager) {
-	//initFlagConfig() // unnecessary? problem?
 	switch gProxyConnectionImpl {
 	case "DirectProxyConnection":
 		DebugLog(gProxyConnectionImpl)
@@ -162,6 +161,8 @@ func (into *MQTTWriter) parseForJSON() {
 func init() {
 	initFlagConfig()
 	anyproxy.InitConfig()
+	// get any flags that are configured in anyproxy package
+	gProxyConnectionImpl = flag.Lookup("proxyConnection").Value.(flag.Getter).Get().(string)
 	gClient = initMQTT()
 }
 
