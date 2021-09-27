@@ -1,5 +1,5 @@
-github.com/230delphi/go-any-proxy v0.0.0-20210827212053-cdfd0a80ce96 h1:qu87ya4xzatelJj00w6+Oh7Z8VHUKFnQ48VVaxe1dIY=
-github.com/230delphi/go-any-proxy v0.0.0-20210827212053-cdfd0a80ce96/go.mod h1:fSYmvemZBRbiJHf7W6Za7pH0dlOX/MyDVJ/Ii40q5tA=
+github.com/230delphi/go-any-proxy v0.0.0-20210927093845-b4ea6356010b h1:5gsKUvH0WR6saMQbG8d7MnxKi25DtMiZ3yCB7UwEIls=
+github.com/230delphi/go-any-proxy v0.0.0-20210927093845-b4ea6356010b/go.mod h1:fSYmvemZBRbiJHf7W6Za7pH0dlOX/MyDVJ/Ii40q5tA=
 github.com/eclipse/paho.mqtt.golang v1.3.5 h1:sWtmgNxYM9P2sP+xEItMozsR3w0cqZFlqnNN1bdl41Y=
 github.com/eclipse/paho.mqtt.golang v1.3.5/go.mod h1:eTzb4gxwwyWpqBUHGQZ4ABAV7+Jgm1PklsYT/eo8Hcc=
 github.com/gorilla/websocket v1.4.2 h1:+/TMaTYc4QFitKJxsQ7Yye35DkWvkdLcvGKqM+x0Ufc=
