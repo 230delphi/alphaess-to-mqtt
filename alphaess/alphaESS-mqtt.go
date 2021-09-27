@@ -41,7 +41,6 @@ func initFlagConfig() {
 	flag.StringVar(&gAlphaEssInstance, "AlphaESSID", "alphaess1", "AlphaESS instance name, appended to MQTTTopicBase. All data is set on this topic eg: homeassisant/sensor/alphaess1/config\n")
 	flag.StringVar(&gLogList, "MSGLogging", "", "Messages to Log. Leave unset for no logging. Log all:\"*\"; log selected: \"GenericRQ,CommandIndexRQ,CommandRQ,ConfigRS,StatusRQ\"")
 	flag.StringVar(&gLocation, "TZLocation", "Local", "Timezone override to ensure time of collection is accurate.")
-	flag.StringVar(&gProxyConnectionImpl, "proxyConnection", "MQTTReadProxyConnection", "Choose a Connection implementation: DirectProxyConnection (default), LoggingProxyConnection, .\n")
 	gMQTTTopic = gTopicBase + gAlphaEssInstance
 	DebugLog("initFlagConfig complete")
 }
@@ -162,6 +161,7 @@ func (into *MQTTWriter) parseForJSON() {
 
 func init() {
 	initFlagConfig()
+	anyproxy.InitConfig()
 	gClient = initMQTT()
 }
 
