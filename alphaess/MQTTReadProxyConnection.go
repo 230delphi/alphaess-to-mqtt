@@ -8,12 +8,13 @@ import (
 	"os"
 )
 
+var LogToFile bool
+
 type MQTTReadProxyConnection struct {
-	LogToFile bool
 }
 
 func (into *MQTTReadProxyConnection) setLogToFile() {
-	into.LogToFile = true
+	LogToFile = true
 }
 
 func (into *MQTTReadProxyConnection) SpawnBiDirectionalCopy(dst io.ReadWriteCloser, src io.ReadWriteCloser, dstName string, srcName string) {
@@ -21,8 +22,11 @@ func (into *MQTTReadProxyConnection) SpawnBiDirectionalCopy(dst io.ReadWriteClos
 	go into.CopyProxyConnection(dst, src, dstName, srcName)
 	go into.CopyProxyConnection(src, dst, srcName, dstName)
 }
-
 func (into *MQTTReadProxyConnection) CopyProxyConnection(dst io.ReadWriteCloser, src io.ReadWriteCloser, dstName string, srcName string) {
+	SimpleCopyProxyConnection(dst, src, dstName, srcName)
+}
+
+func SimpleCopyProxyConnection(dst io.ReadWriteCloser, src io.ReadWriteCloser, dstName string, srcName string) {
 	if dst == nil {
 		log.Debugf("copy(): oops, dst is nil!")
 		return
@@ -36,7 +40,7 @@ func (into *MQTTReadProxyConnection) CopyProxyConnection(dst io.ReadWriteCloser,
 	var mqttDst io.Writer = &MQTTWriter{mySource: srcName}
 	var buf2 io.ReadWriteCloser
 
-	if into.LogToFile {
+	if LogToFile {
 		//TODO retest this logging mechanism
 		myFilename := getUniqueFilename(srcName)
 		log.Debugf("writing file", myFilename)

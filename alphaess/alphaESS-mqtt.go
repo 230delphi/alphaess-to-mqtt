@@ -10,8 +10,10 @@ import (
 	"github.com/namsral/flag"
 	"io"
 	"log"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const MinMessageSize = 10
@@ -29,8 +31,17 @@ var gMQTTTimeoutSeconds int
 var gTopicBase string
 var gMQTTTopic string
 var gProxyConnectionImpl string
+var gChargeBatteryTopic = "/action/chargebattery"
+var gAttributesTopic = "/attributes"
+var gLastConfigRS ConfigRS
+var ClientInject []byte
 
-//var gDebug int
+type ChargeBatteryAction struct {
+	Action          string `json:"action,omitempty"`   //startCharge|stopCharge
+	Hour            int    `json:"hour,omitempty"`     // optional hour to start
+	MinimumDuration int    `json:"duration,omitempty"` // min minutes to be operating
+	BatHighCap      int    `json:"unit_of_measurement,omitempty"`
+}
 
 func initFlagConfig() {
 	flag.StringVar(&gMQTTBrokerAddress, "MQTTAddress", "tcp://127.0.0.1:1883", "MQTT address. Example: tcp://127.0.0.1:1883\n")
@@ -42,7 +53,13 @@ func initFlagConfig() {
 	flag.StringVar(&gLogList, "MSGLogging", "", "Messages to Log. Leave unset for no logging. Log all:\"*\"; log selected: \"GenericRQ,CommandIndexRQ,CommandRQ,ConfigRS,StatusRQ\"")
 	flag.StringVar(&gLocation, "TZLocation", "Local", "Timezone override to ensure time of collection is accurate.")
 	gMQTTTopic = gTopicBase + gAlphaEssInstance
-	DebugLog("initFlagConfig complete")
+	DebugLog("initFlagConfig complete" + gMQTTBrokerAddress)
+}
+
+func printConfig() {
+	fmt.Printf(gMQTTBrokerAddress)
+	fmt.Printf(gMQTTUser)
+
 }
 
 func GetMQTTConnection() (result anyproxy.ProxyConnectionManager) {
@@ -67,6 +84,109 @@ func GetMQTTConnection() (result anyproxy.ProxyConnectionManager) {
 		panic("ProxyConnectionManager implementation not available. please check configuration: " + gProxyConnectionImpl)
 	}
 	return result
+}
+
+func initMQTT() (myClient mqtt.Client) {
+	DebugLog("init MQTT: " + gMQTTBrokerAddress)
+	//mqtt.DEBUG = 	log.New(os.Stderr, "[DEBUG][MQTT]", log.Ltime)
+	mqtt.WARN = log.New(os.Stderr, "[WARN] [MQTT]", log.Ltime)
+	mqtt.ERROR = log.New(os.Stdout, "[ERROR][MQTT]", 0)
+	mqtt.CRITICAL = log.New(os.Stdout, "[CRIT] [MQTT]", 0)
+	opts := mqtt.NewClientOptions().AddBroker(gMQTTBrokerAddress)
+	var secs = time.Now().Unix()
+	opts.SetClientID("alphaESSGoClient_" + strconv.Itoa(int(secs))[6:])
+	opts.SetUsername(gMQTTUser)
+	opts.SetPassword(gMQTTPassword)
+	opts.SetAutoReconnect(true)
+	opts.SetConnectRetry(true)
+	// per common problems, avoids possible deadlock.
+	opts.SetOrderMatters(false)
+	opts.SetKeepAlive(time.Duration(30) * time.Second)
+	opts.SetCleanSession(true)
+	opts.SetProtocolVersion(4)
+	opts.SetConnectRetryInterval(time.Duration(30) * time.Second)
+	opts.SetConnectTimeout(time.Duration(gMQTTTimeoutSeconds) * time.Second)
+	opts.SetMaxReconnectInterval(time.Duration(60) * time.Second)
+	opts.SetPingTimeout(time.Duration(1) * time.Second)
+	opts.SetWriteTimeout(time.Duration(gMQTTTimeoutSeconds) * time.Second)
+	opts.SetDefaultPublishHandler(mqtPublishHandler)
+	opts.SetConnectionLostHandler(connLostHandler)
+	myClient = mqtt.NewClient(opts)
+	if !connectClient(myClient) {
+		panic("Failed to connect to MQTT: " + gMQTTBrokerAddress)
+	}
+	gChargeBatteryTopic = gMQTTTopic + gChargeBatteryTopic
+	return myClient
+}
+
+var mqtPublishHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
+	DebugLog("TOPIC: " + msg.Topic())
+	DebugLog("MSG: " + string(msg.Payload()))
+	//if gChargeBatteryTopic
+	//gLastConfigRS
+	switch msg.Topic() {
+	case gChargeBatteryTopic:
+		InfoLog("MQTT Received on topic " + msg.Topic())
+		var startHour = 0
+		var endHour = 0
+		//Default to charge for this hour, minimum 30mins, charging stops % default
+		//TODO check payload for action (startCharge|stopCharge), optional configuration of hour(00-23), minimum duration (0-300) and % charge (BatHighCap:0-100)
+		//ChargeBatteryAction
+		t := time.Now()
+		startHour = t.Hour()
+		if t.Minute() < 30 {
+			endHour = startHour + 1
+		} else {
+			endHour = startHour + 2
+		}
+		gLastConfigRS.TimeChaF2 = startHour
+		gLastConfigRS.TimeChaE2 = endHour
+		injectConfig, _ := json.Marshal(gLastConfigRS)
+		ClientInject = injectConfig
+	default:
+		InfoLog("Ignored message Received on topic::" + msg.Topic())
+	}
+}
+
+func connLostHandler(client mqtt.Client, err error) {
+	fmt.Printf("Connection lost, reason: %v\n", err)
+	connectClient(client)
+	ErrorLog("Reconnected MQTT")
+}
+
+func connectClient(myClient mqtt.Client) (success bool) {
+	if token := myClient.Connect(); token.Wait() && token.Error() != nil {
+		panic(token.Error())
+	}
+	if myClient.IsConnectionOpen() {
+		DebugLog("initMQTT: connected")
+		success = true
+	} else {
+		ErrorLog("Failed to connect to MQTT: " + gMQTTBrokerAddress)
+		return false
+	}
+	return success
+}
+
+func publishMQTT(mqClient mqtt.Client, topic string, msg string) {
+	t := mqClient.Publish(topic, 0, true, msg)
+	go func() {
+		var success = t.WaitTimeout(time.Duration(gMQTTTimeoutSeconds) * time.Second)
+		if t.Error() != nil {
+			fmt.Printf("Failed to send message: %v\n", t.Error())
+			ExceptionLog(t.Error())
+		}
+		if !success {
+			ErrorLog("Timeout occurred after: " + strconv.Itoa(gMQTTTimeoutSeconds) + " sending:" + msg)
+			ExceptionLog(t.Error())
+		}
+	}()
+}
+
+func subscribeTopic(mqClient mqtt.Client, topic string) {
+	token := mqClient.Subscribe(topic, 1, nil)
+	token.Wait()
+	DebugLog("Subscribed to topic: " + topic)
 }
 
 type MQTTWriter struct {
@@ -125,11 +245,15 @@ func (into *MQTTWriter) parseForJSON() {
 	var start = bytes.Index(data, []byte("{\""))
 	var end = bytes.Index(data, []byte("\"}")) + 2
 	var counter = 0
+	var header string
+	var checksum string
 	for start >= 0 && end > MinMessageSize {
 		counter++
+		header = string(data[0:(start - 1)])
 		data = data[start:]
 		end = bytes.Index(data, []byte("\"}")) + 2
 		if end > MinMessageSize {
+			checksum = string(data[end+1:])
 			var myRecord = data[0:end]
 			if bytes.Index(myRecord[2:], []byte("{\"")) > 0 {
 				ErrorLog("SUSPECT:: more than one" + string(data))
@@ -140,7 +264,7 @@ func (into *MQTTWriter) parseForJSON() {
 			var obj Response
 			obj, err = UnmarshalJSON(myRecord)
 			if obj != nil {
-				//DebugLog(fmt.Sprint("success:", obj))
+				DebugLog("Obj found; header:" + header + " checksum:" + checksum)
 				publishAlphaESSStats(obj, into.mySource)
 			} else if err != nil {
 				ErrorLog("Unmarshal failed:" + err.Error())
@@ -163,6 +287,7 @@ func init() {
 	anyproxy.InitConfig()
 	// get any flags that are configured in anyproxy package
 	gProxyConnectionImpl = flag.Lookup("proxyConnection").Value.(flag.Getter).Get().(string)
+	gLoggingLevel = flag.Lookup("v").Value.(flag.Getter).Get().(int)
 	gClient = initMQTT()
 }
 
@@ -189,12 +314,13 @@ func publishAlphaESSStats(obj Response, source string) {
 		publishMQTT(gClient, gMQTTTopic+destination, string(res))
 		InfoLog(fmt.Sprint("MQTT Published::", v))
 	case BatteryRQ:
-		destination = "/other"
+		destination = "/battery"
 		res, _ := json.Marshal(v)
 		publishMQTT(gClient, gMQTTTopic+destination, string(res))
 		InfoLog(fmt.Sprint("MQTT Published::", v))
 	case ConfigRS:
-		destination = "/attributes"
+		gLastConfigRS = v
+		destination = gAttributesTopic
 		res, _ := json.Marshal(v)
 		publishMQTT(gClient, gMQTTTopic+destination, string(res))
 		InfoLog(fmt.Sprint("MQTT Published::", v))

@@ -14,7 +14,7 @@ type HasMQTTConfig struct {
 	Icon              string `json:"icon,omitempty"`
 	//TODO look at adding HAS MQTT support for other fields
 	//state_class		  string `json:"state_class,omitempty"`
-	//icon_template		  strimg `json:"icon_template,omitempty"`
+	//icon_template		  string `json:"icon_template,omitempty"`
 }
 
 func PublishHASEntityConfig() {
@@ -134,14 +134,16 @@ func PublishHASEntityConfig() {
 
 	// TEMPLATE: mdi:solar-power AlphaESS-TotalSolar
 	myHASConfig.Name = "AlphaESS - TotalSolar"
-	myHASConfig.ValueTemplate = "{{states('sensor.alphaess_power_from_pv1')|int + states('sensor.alphaess_power_from_pv2')|int}}"
+	myHASConfig.ValueTemplate = "{{states('sensor.alphaess_power_from_pv1')|int + " +
+		"states('sensor.alphaess_power_from_pv2')|int}}"
 	myHASConfig.Icon = "mdi:solar-power"
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTTopic+"/PTotal/config", string(res))
 
 	// composite load value
 	myHASConfig.Name = "AlphaESS - Total Load"
-	myHASConfig.ValueTemplate = "{{states('sensor.alphaess_totalsolar')|int + states('sensor.alphaess_feedin_grid_power_in')|int}}"
+	myHASConfig.ValueTemplate = "{{states('sensor.alphaess_totalsolar')|int + " +
+		"states('sensor.alphaess_feedin_grid_power_in' + states(\"sensor.alphaess_batteryrq_load_out\"))|int}}"
 	myHASConfig.Icon = "mdi:power-socket-uk"
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTTopic+"/LoadTotal/config", string(res))
