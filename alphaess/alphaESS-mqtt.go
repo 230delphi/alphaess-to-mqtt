@@ -139,8 +139,8 @@ var mqtPublishHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 		} else {
 			endHour = startHour + 2
 		}
-		gLastConfigRS.TimeChaF2 = startHour
-		gLastConfigRS.TimeChaE2 = endHour
+		gLastConfigRS.TimeChaF2 = string(startHour)
+		gLastConfigRS.TimeChaE2 = string(endHour)
 		injectConfig, _ := json.Marshal(gLastConfigRS)
 		ClientInject = injectConfig
 	default:

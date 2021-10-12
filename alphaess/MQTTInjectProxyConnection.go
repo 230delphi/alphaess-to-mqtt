@@ -24,7 +24,7 @@ func (into *MQTTInjectProxyConnection) CopyProxyConnection(dst io.ReadWriteClose
 	SimpleCopyProxyConnection(dst, src, dstName, srcName)
 }
 
-func init() {
+func initMQTTClient() {
 	if gClient == nil {
 		gClient = initMQTT()
 	}
@@ -32,6 +32,7 @@ func init() {
 }
 
 func (into *MQTTInjectProxyConnection) CopyAndInjectProxyConnection(dst io.ReadWriteCloser, src io.ReadWriteCloser, dstName string, srcName string) {
+	initMQTTClient()
 	if dst == nil {
 		log.Debugf("copy(): oops, dst is nil!")
 		return
