@@ -48,14 +48,14 @@ func (into *MQTTStubProxyConnection) CopyProxyConnection(dst io.ReadWriteCloser,
 	}
 	_, err = io.Copy(output, src)
 
-	ExceptionLog(err)
+	ExceptionLog(err, "SRC:"+srcName)
 	if buf2 != nil {
 		_ = buf2.Close()
 	}
 
 	ReportStatistics(err, srcName, dstName)
 	err = dst.Close()
-	ExceptionLog(err)
+	ExceptionLog(err, "SRC:"+srcName)
 	err = src.Close()
-	ExceptionLog(err)
+	ExceptionLog(err, "SRC:"+srcName)
 }

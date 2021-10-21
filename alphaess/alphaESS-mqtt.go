@@ -1,15 +1,16 @@
 package alphaess
 
 import (
-	"bufio"
-	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"github.com/230delphi/go-any-proxy/anyproxy"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/ghostiam/binstruct"
 	"github.com/namsral/flag"
-	"io"
+	"github.com/sigurn/crc16"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -18,7 +19,10 @@ import (
 
 const MinMessageSize = 10
 
-var data = make([]byte, 0)
+var COMMANDHEADER = []byte{0x1, 0x1, 0x8}
+var SUCCESSHEADER1 = []byte{0x1, 0x2, 0x0}
+var SUCCESSHEADER2 = []byte{0x1, 0x2, 0x4}
+var CONFIGHEADER = []byte{0x1, 0x2, 0x3}
 
 var gClient mqtt.Client
 var gMQTTBrokerAddress string
@@ -26,21 +30,35 @@ var gMQTTUser string
 var gMQTTPassword string
 var gAlphaEssInstance string
 var gLogList string
-var gLocation string
+var gTZLocation string
 var gMQTTTimeoutSeconds int
 var gTopicBase string
 var gMQTTTopic string
 var gProxyConnectionImpl string
 var gChargeBatteryTopic = "/action/chargebattery"
 var gAttributesTopic = "/attributes"
-var gLastConfigRS ConfigRS
-var ClientInject []byte
+var gLastServerConfig ConfigRS
+var gLastClientConfig ConfigRS
+var gLastChargeState = false
+var gLastCommandRQ CommandRQ
+var gCommandRQTopic = "/LastCommand"
+var gLastSerialRQ SerialRQ
+var gSerialRQTopic = "/LastSerialRQ"
+var gActiveConversations []*conversationType = nil
+
+// TODO integration tests for alphaESS MQTT config and implementation.
+
+type ConfigCommand struct {
+	Command []byte
+	Serial  []byte
+	Config  []byte
+}
 
 type ChargeBatteryAction struct {
-	Action          string `json:"action,omitempty"`   //startCharge|stopCharge
-	Hour            int    `json:"hour,omitempty"`     // optional hour to start
-	MinimumDuration int    `json:"duration,omitempty"` // min minutes to be operating
-	BatHighCap      int    `json:"unit_of_measurement,omitempty"`
+	GridCharge      bool `json:"action"`             //startCharge|stopCharge
+	StartHour       int  `json:"hour,omitempty"`     // optional hour to start
+	MinimumDuration int  `json:"duration,omitempty"` // min minutes to be operating
+	BatHighCap      int  `json:"unit_of_measurement,omitempty"`
 }
 
 func initFlagConfig() {
@@ -51,7 +69,7 @@ func initFlagConfig() {
 	flag.StringVar(&gTopicBase, "MQTTTopicBase", "homeassistant/sensor/", "MQTT base topic. ")
 	flag.StringVar(&gAlphaEssInstance, "AlphaESSID", "alphaess1", "AlphaESS instance name, appended to MQTTTopicBase. All data is set on this topic eg: homeassisant/sensor/alphaess1/config\n")
 	flag.StringVar(&gLogList, "MSGLogging", "", "Messages to Log. Leave unset for no logging. Log all:\"*\"; log selected: \"GenericRQ,CommandIndexRQ,CommandRQ,ConfigRS,StatusRQ\"")
-	flag.StringVar(&gLocation, "TZLocation", "Local", "Timezone override to ensure time of collection is accurate.")
+	flag.StringVar(&gTZLocation, "TZLocation", "Local", "Timezone override to ensure time of collection is accurate.")
 	gMQTTTopic = gTopicBase + gAlphaEssInstance
 	DebugLog("initFlagConfig complete" + gMQTTBrokerAddress)
 }
@@ -59,7 +77,6 @@ func initFlagConfig() {
 func printConfig() {
 	fmt.Printf(gMQTTBrokerAddress)
 	fmt.Printf(gMQTTUser)
-
 }
 
 func GetMQTTConnection() (result anyproxy.ProxyConnectionManager) {
@@ -119,33 +136,138 @@ func initMQTT() (myClient mqtt.Client) {
 	return myClient
 }
 
+func getTimeNowInTimeZone() time.Time {
+	var t time.Time
+	loc, err := time.LoadLocation(gTZLocation)
+	if err == nil {
+		t = time.Now().In(loc)
+	} else {
+		t = time.Now()
+	}
+	return t
+}
+
 var mqtPublishHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-	DebugLog("TOPIC: " + msg.Topic())
-	DebugLog("MSG: " + string(msg.Payload()))
-	//if gChargeBatteryTopic
-	//gLastConfigRS
+	DebugLog("TOPIC: " + msg.Topic() + " : " + string(msg.Payload()))
 	switch msg.Topic() {
 	case gChargeBatteryTopic:
 		InfoLog("MQTT Received on topic " + msg.Topic())
-		var startHour = 0
-		var endHour = 0
-		//Default to charge for this hour, minimum 30mins, charging stops % default
-		//TODO check payload for action (startCharge|stopCharge), optional configuration of hour(00-23), minimum duration (0-300) and % charge (BatHighCap:0-100)
-		//ChargeBatteryAction
-		t := time.Now()
-		startHour = t.Hour()
-		if t.Minute() < 30 {
-			endHour = startHour + 1
-		} else {
-			endHour = startHour + 2
+		action := getChargeBatteryAction(msg.Payload())
+		injectConfigObject := buildConfigObject(action)
+		gLastChargeState = action.GridCharge
+		injectConfigBytes, _ := json.Marshal(injectConfigObject)
+		injectConfigBytes = AddHeaderAndCheckSum(injectConfigBytes, CONFIGHEADER)
+		if gLastCommandRQ.CmdIndex == 0 {
+			gLastCommandRQ.CmdIndex = 51422064
+			gLastCommandRQ.Command = "SetConfig"
 		}
-		gLastConfigRS.TimeChaF2 = string(startHour)
-		gLastConfigRS.TimeChaE2 = string(endHour)
-		injectConfig, _ := json.Marshal(gLastConfigRS)
-		ClientInject = injectConfig
+		gLastCommandRQ.CmdIndex = gLastCommandRQ.CmdIndex + 1
+		injectSetCommand, _ := json.Marshal(gLastCommandRQ)
+		injectSetCommand = AddHeaderAndCheckSum(injectSetCommand, COMMANDHEADER)
+		injectSuccess1 := AddHeaderAndCheckSum([]byte("{\"Status\":\"Success\"}"), SUCCESSHEADER1)
+		injectSuccess2 := AddHeaderAndCheckSum([]byte("{\"Status\":\"Success\"}"), SUCCESSHEADER2)
+
+		configConversation := conversationType{
+			indexOfNextAction: 0,
+			actions: []actionType{
+				{
+					"start convo",
+					INJECT,
+					SERVER,
+					injectSetCommand,
+					nil,
+				},
+				{
+					"ACK response",
+					RESPOND,
+					CLIENT,
+					[]byte("\"Status\":\"Success\"}"),
+					injectSuccess1,
+				},
+				{
+					"RS SN w/Config",
+					RESPOND,
+					CLIENT,
+					[]byte(SERIALRQPATTERN),
+					injectConfigBytes,
+				},
+				{
+					"ACK config RS",
+					RESPOND,
+					CLIENT,
+					[]byte(CONFIGRSPATTERN),
+					injectSuccess2,
+				},
+			},
+			lastUpdate: 0,
+		}
+		gActiveConversations = []*conversationType{&configConversation}
+	case gCommandRQTopic:
+		DebugLog("MQTT Received on topic " + msg.Topic())
+		if gLastCommandRQ.CmdIndex < 10 {
+			_ = json.Unmarshal(msg.Payload(), &gLastCommandRQ)
+		}
 	default:
 		InfoLog("Ignored message Received on topic::" + msg.Topic())
 	}
+}
+
+func buildConfigObject(action *ChargeBatteryAction) *ConfigRS {
+	var endHour = 0
+	t := getTimeNowInTimeZone()
+	currentHour := t.Hour()
+	if action.MinimumDuration < 10 {
+		action.MinimumDuration = 30
+	}
+	// nonzero start hour for immediate start. 0 is midnight.
+	if (action.StartHour < 0) || (action.StartHour == currentHour) {
+		action.StartHour = currentHour
+		minMinutesThisHour := action.MinimumDuration % 60
+		minHours := ((action.MinimumDuration - minMinutesThisHour) / 60) + 1
+		if t.Minute() < minMinutesThisHour {
+			endHour = (currentHour + minHours) % 24
+		} else {
+			endHour = (currentHour + minHours + 1) % 24
+		}
+	} else {
+		minHours := int(math.Ceil(float64(1 + (action.MinimumDuration / 60))))
+		endHour = (action.StartHour + minHours) % 24
+	}
+
+	if !action.GridCharge {
+		endHour = action.StartHour
+	}
+
+	var injectConfigObject = ConfigRS{}
+	// populate from saved values
+	injectConfigObject = gLastServerConfig
+
+	injectConfigObject.TimeChaF2 = action.StartHour
+	injectConfigObject.TimeChaE2 = endHour
+	injectConfigObject.Status = "Success"
+	injectConfigObject.BackUpBox = false
+	injectConfigObject.BatHighCap = float32(action.BatHighCap)
+	injectConfigObject.BatHighCapWE = 0
+	injectConfigObject.BatReady = 0
+	injectConfigObject.BatUseCap = 10
+	injectConfigObject.BatUseCapWE = 0
+	injectConfigObject.Generator = false
+	injectConfigObject.GridCharge = action.GridCharge
+	injectConfigObject.GridChargeWE = false
+	injectConfigObject.CtrDis = false
+	injectConfigObject.CtrDisWE = false
+	injectConfigObject.SelfUseOrEconomic = 0
+	injectConfigObject.ReliefMode = 0
+
+	return &injectConfigObject
+}
+
+func getChargeBatteryAction(payload []byte) (batteryAction *ChargeBatteryAction) {
+	action := ChargeBatteryAction{!gLastChargeState, -1, 10, 50}
+	//TODO read from payload
+	_ = json.Unmarshal(payload, &action)
+	DebugLog(fmt.Sprintf("ChargeBatteryAction:", action))
+	return &action
 }
 
 func connLostHandler(client mqtt.Client, err error) {
@@ -174,11 +296,11 @@ func publishMQTT(mqClient mqtt.Client, topic string, msg string) {
 		var success = t.WaitTimeout(time.Duration(gMQTTTimeoutSeconds) * time.Second)
 		if t.Error() != nil {
 			fmt.Printf("Failed to send message: %v\n", t.Error())
-			ExceptionLog(t.Error())
+			ExceptionLog(t.Error(), "publishMQTT()")
 		}
 		if !success {
 			ErrorLog("Timeout occurred after: " + strconv.Itoa(gMQTTTimeoutSeconds) + " sending:" + msg)
-			ExceptionLog(t.Error())
+			ExceptionLog(t.Error(), "publishMQTT()")
 		}
 	}()
 }
@@ -187,99 +309,6 @@ func subscribeTopic(mqClient mqtt.Client, topic string) {
 	token := mqClient.Subscribe(topic, 1, nil)
 	token.Wait()
 	DebugLog("Subscribed to topic: " + topic)
-}
-
-type MQTTWriter struct {
-	mySource string
-}
-
-func (into *MQTTWriter) Write(newData []byte) (n int, err error) {
-	DebugLog("MQTTWriter write()" + string(newData))
-	data = append(data, newData...)
-	into.parseForJSON()
-	n = len(newData)
-	return n, err
-}
-
-func (into *MQTTWriter) close() (err error) {
-	return err
-}
-
-func ProcessStream(myReader *bufio.Reader) (found int) {
-	var counter = 0 // Read data from stdin in a loop
-	//var found int = 0
-	var myWriter = MQTTWriter{}
-	var err error
-	for {
-		_, err = myReader.Peek(MinMessageSize)
-		if err == io.EOF && (len(data) < MinMessageSize || bytes.Index(data, []byte("}")) < 0 || bytes.Index(data, []byte("{")) < 0) {
-			if len(data) > MinMessageSize {
-				DebugLog(string(data))
-			}
-			break
-		} else {
-			counter++
-			nextLine := make([]byte, 12800)
-			var n int
-			n, err = myReader.Read(nextLine)
-			if err == nil && n > 0 {
-				data = bytes.Trim(append(data, nextLine...), "\x00")
-			} else if n == 0 && len(data) < 80 {
-				DebugLog("EOF error. reads:" + strconv.Itoa(counter) + "data size:" + strconv.Itoa(len(data)))
-				if len(data) > MinMessageSize {
-					DebugLog(string(data))
-				}
-				break
-			} else {
-				ExceptionLog(err)
-			}
-		}
-		myWriter.parseForJSON()
-		found++
-	}
-	return found
-}
-
-func (into *MQTTWriter) parseForJSON() {
-	var err error
-	var start = bytes.Index(data, []byte("{\""))
-	var end = bytes.Index(data, []byte("\"}")) + 2
-	var counter = 0
-	var header string
-	var checksum string
-	for start >= 0 && end > MinMessageSize {
-		counter++
-		header = string(data[0:(start - 1)])
-		data = data[start:]
-		end = bytes.Index(data, []byte("\"}")) + 2
-		if end > MinMessageSize {
-			checksum = string(data[end+1:])
-			var myRecord = data[0:end]
-			if bytes.Index(myRecord[2:], []byte("{\"")) > 0 {
-				ErrorLog("SUSPECT:: more than one" + string(data))
-			}
-			//trim and discard rest
-			data = bytes.Trim(data[(end):], "\x00")
-			// deal with record
-			var obj Response
-			obj, err = UnmarshalJSON(myRecord)
-			if obj != nil {
-				DebugLog("Obj found; header:" + header + " checksum:" + checksum)
-				publishAlphaESSStats(obj, into.mySource)
-			} else if err != nil {
-				ErrorLog("Unmarshal failed:" + err.Error())
-			}
-		}
-		start = bytes.Index(data, []byte("{\""))
-		end = bytes.Index(data, []byte("\"}")) + 2
-	}
-	if len(data) < MinMessageSize {
-		DebugLog("ParseJason() complete: counter:" + strconv.Itoa(counter) + "data:" + string(data))
-	}
-	if len(data) > 0 && start < 0 {
-		// empty buffer of non Json data
-		data = make([]byte, 0)
-	}
 }
 
 func init() {
@@ -296,11 +325,9 @@ func logResponse(obj Response, source string) {
 	var myType = strings.ReplaceAll(fmt.Sprintf("%T", obj), "alphaess.", "")
 	objString, _ := json.Marshal(obj)
 	if strings.Contains(gLogList, myType) {
-		log.Println("SRC:" + source + " type:" + myType + " : " + string(objString))
+		InfoLog("SRC:" + source + " type:" + myType + " : " + string(objString))
 	} else if strings.Index(gLogList, "*") == 0 {
-		log.Println("SRC:" + source + " type:" + myType + " : " + string(objString))
-	} else {
-		DebugLog("SRC:" + source + " type: " + myType + " not in: " + gLogList)
+		InfoLog("SRC:" + source + " type:" + myType + " : " + string(objString))
 	}
 }
 
@@ -312,19 +339,110 @@ func publishAlphaESSStats(obj Response, source string) {
 		destination = "/state"
 		res, _ := json.Marshal(v)
 		publishMQTT(gClient, gMQTTTopic+destination, string(res))
-		InfoLog(fmt.Sprint("MQTT Published::", v))
+		InfoLog(fmt.Sprint("SRC:"+source+"; MQTT Published::", v))
 	case BatteryRQ:
 		destination = "/battery"
 		res, _ := json.Marshal(v)
 		publishMQTT(gClient, gMQTTTopic+destination, string(res))
-		InfoLog(fmt.Sprint("MQTT Published::", v))
+		InfoLog(fmt.Sprint("SRC:"+source+"; MQTT Published::", v))
 	case ConfigRS:
-		gLastConfigRS = v
 		destination = gAttributesTopic
 		res, _ := json.Marshal(v)
 		publishMQTT(gClient, gMQTTTopic+destination, string(res))
-		InfoLog(fmt.Sprint("MQTT Published::", v))
+		if source == "directserver" {
+			gLastServerConfig = v
+		} else {
+			gLastClientConfig = v
+		}
+		InfoLog(fmt.Sprint("SRC:"+source+"; MQTT Published::", v))
+	case CommandRQ:
+		gLastCommandRQ = v
+		destination = gCommandRQTopic
+		res, _ := json.Marshal(v)
+		publishMQTT(gClient, gMQTTTopic+destination, string(res))
+		InfoLog(fmt.Sprint("SRC:"+source+"; MQTT Published::", v))
+	case SerialRQ:
+		gLastSerialRQ = v
+		destination = gSerialRQTopic
+		res, _ := json.Marshal(v)
+		publishMQTT(gClient, gMQTTTopic+destination, string(res))
+		InfoLog(fmt.Sprint("SRC:"+source+"; MQTT Published::", v))
 	default:
-		DebugLog(fmt.Sprint("Ignored message type::", v))
+		DebugLog(fmt.Sprint("SRC:"+source+"; MQTT not publishing message type::", v))
+	}
+}
+
+func AddHeaderAndCheckSum(data []byte, byteHeader []byte) (result []byte) {
+	byteLen := make([]byte, 4)
+	binary.BigEndian.PutUint32(byteLen, uint32(len(data)))
+	if len(byteLen) < 4 {
+		pad := make([]byte, 4-len(byteLen))
+		byteLen = append(pad, byteLen...)
+	}
+	byteHeader = append(byteHeader, byteLen...)
+	bytesForChecksum := append(byteHeader, data...)
+	// checksum is uint16 to bytes
+	table := crc16.MakeTable(crc16.CRC16_MODBUS)
+	myCheck := crc16.Checksum(bytesForChecksum, table)
+	byteCSum := make([]byte, 2)
+	binary.BigEndian.PutUint16(byteCSum, myCheck)
+	result = append(bytesForChecksum, byteCSum...)
+	return result
+}
+
+func testCheckSum(head []byte, d []byte, checksum []byte) {
+	reader := binstruct.NewReaderFromBytes(head, binary.BigEndian, false)
+	an, b, err := reader.ReadBytes(3)
+	if err != nil {
+		ErrorLog("Error reading first 3 bytes")
+	}
+	//InfoLog(fmt.Sprintln("Read %d bytes: %#v\n", an, b))
+	//fmt.Println("Read %d bytes: %#v\n", an, b)
+	fmt.Printf("Read %d bytes: %#v\n", an, b)
+	dataLen, err := reader.ReadInt32()
+	if err != nil {
+		ErrorLog("Error reading len")
+	}
+	if dataLen != int32(len(d)) {
+		ErrorLog("Error in Length:" + strconv.Itoa(int(dataLen)))
+	}
+	csReader := binstruct.NewReaderFromBytes(checksum, binary.BigEndian, false)
+	checksumU16, err := csReader.ReadUint16()
+	if err != nil {
+		ErrorLog("ERROR reading checksum")
+	}
+	toBeCheckSummed := append(head[:], d[:]...)
+	//Crc16Modbus : https://pkg.go.dev/github.com/sigurn/crc16#section-readme
+	table := crc16.MakeTable(crc16.CRC16_MODBUS)
+	myCheck := crc16.Checksum(toBeCheckSummed, table)
+	if checksum != nil && (checksumU16 != myCheck) {
+		ErrorLog("checksum failed:" + string(toBeCheckSummed))
+	} else if checksum == nil {
+		ErrorLog("<=1 length checksum")
+	}
+}
+
+func logMessage(context string, msg []byte) {
+	head := msg[:7]
+	body := msg[7 : len(msg)-2]
+	checksum := msg[len(msg)-2:]
+	reader := binstruct.NewReaderFromBytes(head, binary.BigEndian, false)
+	_, b, _ := reader.ReadBytes(3)
+	dataLen, _ := reader.ReadInt32()
+	fmt.Printf("%s: Header: %#v %d\n", context, b, dataLen)
+	fmt.Printf("Body: '%s'\n", string(body))
+	csReader := binstruct.NewReaderFromBytes(checksum, binary.BigEndian, false)
+	checksumU16, _ := csReader.ReadUint16()
+	toBeCheckSummed := msg[:len(msg)-2]
+	//Crc16Modbus : https://pkg.go.dev/github.com/sigurn/crc16#section-readme
+	table := crc16.MakeTable(crc16.CRC16_MODBUS)
+	myCheck := crc16.Checksum(toBeCheckSummed, table)
+	if checksum != nil && (checksumU16 != myCheck) {
+		ErrorLog("checksum failed:" + string(toBeCheckSummed) + " from:" + string(checksum))
+	} else if checksum == nil {
+		fmt.Printf("Checksum Nil")
+	}
+	if checksumU16 == myCheck {
+		fmt.Printf("Checksum: %d\n", checksumU16)
 	}
 }

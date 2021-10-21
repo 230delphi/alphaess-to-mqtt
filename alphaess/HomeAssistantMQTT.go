@@ -143,7 +143,7 @@ func PublishHASEntityConfig() {
 	// composite load value
 	myHASConfig.Name = "AlphaESS - Total Load"
 	myHASConfig.ValueTemplate = "{{states('sensor.alphaess_totalsolar')|int + " +
-		"states('sensor.alphaess_feedin_grid_power_in' + states(\"sensor.alphaess_batteryrq_load_out\"))|int}}"
+		"states('sensor.alphaess_feedin_grid_power_in')|int + states('sensor.alphaess_batteryrq_load_out')|int}}"
 	myHASConfig.Icon = "mdi:power-socket-uk"
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTTopic+"/LoadTotal/config", string(res))

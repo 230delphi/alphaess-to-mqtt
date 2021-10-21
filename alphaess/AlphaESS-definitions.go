@@ -8,6 +8,10 @@ import (
 )
 
 //const DefaultExpiry = 1500 // seconds after which to expire a sensor value;
+// TODO Unit tests for AlphaESS-definitions; parse from files.
+
+const SERIALRQPATTERN = "{\"SN\""
+const CONFIGRSPATTERN = "ZipCode"
 
 type AuthRQ struct {
 	UserName    string `json:"UserName"`
@@ -15,6 +19,7 @@ type AuthRQ struct {
 	CompanyName string `json:"CompanyName"`
 }
 
+//SuccessRS {"Status":"Success"}
 type SuccessRS struct {
 	Status string `json:"Status"`
 }
@@ -48,9 +53,11 @@ type StatusRQ struct {
 }
 
 // CommandRQ {"Command":"SetConfig","CmdIndex":"35235904"}
+//	{"Command":"SetConfig","CmdIndex":"49662827","Status":"Success"}
 type CommandRQ struct {
 	Command  string `json:"Command"`
-	CmdIndex string `json:"CmdIndex"`
+	CmdIndex int64  `json:"CmdIndex,string"`
+	Status   string `json:"Status,omitempty"`
 }
 
 // CommandIndexRQ {"CmdIndex":"80867000","Command":"Resume","Parameter1":"2021/08/27 23:16:32","Parameter2":"10"}
@@ -199,143 +206,155 @@ type BatteryRQ struct {
 	CSQ            string    `json:"CSQ"`
 }
 
+// ConfigRS is the main config message shared between the cloud servers and battery system/
 type ConfigRS struct {
-	SN                 string `json:"SN"`
-	Address            string `json:"Address"`
-	ZipCode            string `json:"ZipCode"`
-	Country            string `json:"Country"`
-	PhoneNumber        string `json:"PhoneNumber"`
-	License            string `json:"License"`
-	Popv               string `json:"Popv"`
-	Minv               string `json:"Minv"`
-	Poinv              string `json:"Poinv"`
-	Cobat              string `json:"Cobat"`
-	Mbat               string `json:"Mbat"`
-	Uscapacity         string `json:"Uscapacity"`
-	InstallMeterOption string `json:"InstallMeterOption"`
-	Mmeter             string `json:"Mmeter"`
-	PVMeterMode        string `json:"PVMeterMode"`
-	CTRate             string `json:"CTRate"`
-	PVMeterCTRate      string `json:"PVMeterCTRate"`
-	GridMeterCTE       string `json:"GridMeterCTE"`
-	PVMeterCTE         string `json:"PVMeterCTE"`
-	BatterySN1         string `json:"BatterySN1"`
-	BatterySN2         string `json:"BatterySN2"`
-	BatterySN3         string `json:"BatterySN3"`
-	BatterySN4         string `json:"BatterySN4"`
-	BatterySN5         string `json:"BatterySN5"`
-	BatterySN6         string `json:"BatterySN6"`
-	BatterySN7         string `json:"BatterySN7"`
-	BatterySN8         string `json:"BatterySN8"`
-	BatterySN9         string `json:"BatterySN9"`
-	BatterySN10        string `json:"BatterySN10"`
-	BatterySN11        string `json:"BatterySN11"`
-	BatterySN12        string `json:"BatterySN12"`
-	BatterySN13        string `json:"BatterySN13"`
-	BatterySN14        string `json:"BatterySN14"`
-	BatterySN15        string `json:"BatterySN15"`
-	BatterySN16        string `json:"BatterySN16"`
-	BatterySN17        string `json:"BatterySN17"`
-	BatterySN18        string `json:"BatterySN18"`
-	BMSVersion         string `json:"BMSVersion"`
-	EMSVersion         string `json:"EMSVersion"`
-	InvVersion         string `json:"InvVersion"`
-	InvSN              string `json:"InvSN"`
-	ACDC               string `json:"ACDC"`
-	Generator          string `json:"Generator"`
-	BackUpBox          string `json:"BackUpBox"`
-	Fan                string `json:"Fan"`
-	GridCharge         string `json:"GridCharge"`
-	CtrDis             string `json:"CtrDis"`
-	TimeChaF1          string `json:"TimeChaF1"`
-	TimeChaE1          string `json:"TimeChaE1"`
-	TimeChaF2          string `json:"TimeChaF2"`
-	TimeChaE2          string `json:"TimeChaE2"`
-	TimeDisF1          string `json:"TimeDisF1"`
-	TimeDisE1          string `json:"TimeDisE1"`
-	TimeDisF2          string `json:"TimeDisF2"`
-	TimeDisE2          string `json:"TimeDisE2"`
-	BatHighCap         string `json:"BatHighCap"`
-	BatUseCap          string `json:"BatUseCap"`
-	SetMode            string `json:"SetMode"`
-	SetPhase           string `json:"SetPhase"`
-	SetFeed            string `json:"SetFeed"`
-	BakBoxSN           string `json:"BakBoxSN"`
-	SCBSN              string `json:"SCBSN"`
-	BakBoxVer          string `json:"BakBoxVer"`
-	SCBVer             string `json:"SCBVer"`
-	BMUModel           string `json:"BMUModel"`
-	GeneratorMode      string `json:"GeneratorMode"`
-	GCSOCStart         string `json:"GCSOCStart"`
-	GCSOCEnd           string `json:"GCSOCEnd"`
-	GCTimeStart        string `json:"GCTimeStart"`
-	GCTimeEnd          string `json:"GCTimeEnd"`
-	GCOutputMode       string `json:"GCOutputMode"`
-	GCChargePower      string `json:"GCChargePower"`
-	GCRatedPower       string `json:"GCRatedPower"`
-	EmsLanguage        string `json:"EmsLanguage"`
-	L1Priority         string `json:"L1Priority"`
-	L2Priority         string `json:"L2Priority"`
-	L3Priority         string `json:"L3Priority"`
-	L1SocLimit         string `json:"L1SocLimit"`
-	L2SocLimit         string `json:"L2SocLimit"`
-	L3SocLimit         string `json:"L3SocLimit"`
-	FirmwareVersion    string `json:"FirmwareVersion"`
-	OnGridCap          string `json:"OnGridCap"`
-	StorageCap         string `json:"StorageCap"`
-	BatReady           string `json:"BatReady"`
-	MeterACNegate      string `json:"MeterACNegate"`
-	MeterDCNegate      string `json:"MeterDCNegate"`
-	Safe               string `json:"Safe"`
-	PowerFact          string `json:"PowerFact"`
-	Volt5MinAvg        string `json:"Volt5MinAvg"`
-	Volt10MinAvg       string `json:"Volt10MinAvg"`
-	TempThreshold      string `json:"TempThreshold"`
-	OutCurProtect      string `json:"OutCurProtect"`
-	DCI                string `json:"DCI"`
-	RCD                string `json:"RCD"`
-	PvISO              string `json:"PvISO"`
-	ChargeBoostCur     string `json:"ChargeBoostCur"`
-	Channel1           string `json:"Channel1"`
-	ControlMode1       string `json:"ControlMode1"`
-	StartTime1A        string `json:"StartTime1A"`
-	EndTime1A          string `json:"EndTime1A"`
-	StartTime1B        string `json:"StartTime1B"`
-	EndTime1B          string `json:"EndTime1B"`
-	Date1              string `json:"Date1"`
-	ChargeSOC1         string `json:"ChargeSOC1"`
-	ChargeMode1        string `json:"ChargeMode1"`
-	UPS1               string `json:"UPS1"`
-	SwitchOn1          string `json:"SwitchOn1"`
-	SwitchOff1         string `json:"SwitchOff1"`
-	Delay1             string `json:"Delay1"`
-	Duration1          string `json:"Duration1"`
-	Pause1             string `json:"Pause1"`
-	Channel2           string `json:"Channel2"`
-	ControlMode2       string `json:"ControlMode2"`
-	StartTime2A        string `json:"StartTime2A"`
-	EndTime2A          string `json:"EndTime2A"`
-	StartTime2B        string `json:"StartTime2B"`
-	EndTime2B          string `json:"EndTime2B"`
-	Date2              string `json:"Date2"`
-	ChargeSOC2         string `json:"ChargeSOC2"`
-	ChargeMode2        string `json:"ChargeMode2"`
-	UPS2               string `json:"UPS2"`
-	SwitchOn2          string `json:"SwitchOn2"`
-	SwitchOff2         string `json:"SwitchOff2"`
-	Delay2             string `json:"Delay2"`
-	Duration2          string `json:"Duration2"`
-	Pause2             string `json:"Pause2"`
-	UseCt              string `json:"use_ct"`
-	CtRate             string `json:"ct_rate"`
-	InstallModule      string `json:"InstallModule"`
-	StringAE           string `json:"StringAE"`
-	StringBE           string `json:"StringBE"`
-	StringCE           string `json:"StringCE"`
-	NetType            string `json:"NetType"`
-	WifiSN             string `json:"WifiSN"`
-	WifiSW             string `json:"WifiSW"`
-	WifiHW             string `json:"WifiHW"`
+	Status             string  `json:"Status,omitempty"`
+	SN                 string  `json:"SN"`
+	Address            string  `json:"Address"`
+	ZipCode            string  `json:"ZipCode"`
+	Country            string  `json:"Country"`
+	PhoneNumber        string  `json:"PhoneNumber"`
+	License            string  `json:"License"`
+	Popv               float32 `json:"Popv,string"` //"11.50"
+	Minv               string  `json:"Minv"`
+	Poinv              float32 `json:"Poinv,string"` //"5.00"
+	Cobat              float32 `json:"Cobat,string"` //"Cobat":"11.40"
+	Mbat               string  `json:"Mbat"`
+	Uscapacity         float32 `json:"Uscapacity,string"` //"90.00"
+	InstallMeterOption string  `json:"InstallMeterOption"`
+	Mmeter             string  `json:"Mmeter"`
+	PVMeterMode        string  `json:"PVMeterMode,omitempty"`
+	CTRate             int     `json:"CTRate,string"`
+	PVMeterCTRate      int     `json:"PVMeterCTRate,string"`
+	GridMeterCTE       int     `json:"GridMeterCTE,string"`
+	PVMeterCTE         int     `json:"PVMeterCTE,string"`
+	BatterySN1         string  `json:"BatterySN1,omitempty"`
+	BatterySN2         string  `json:"BatterySN2,omitempty"`
+	BatterySN3         string  `json:"BatterySN3,omitempty"`
+	BatterySN4         string  `json:"BatterySN4,omitempty"`
+	BatterySN5         string  `json:"BatterySN5,omitempty"`
+	BatterySN6         string  `json:"BatterySN6,omitempty"`
+	BatterySN7         string  `json:"BatterySN7,omitempty"`
+	BatterySN8         string  `json:"BatterySN8,omitempty"`
+	BatterySN9         string  `json:"BatterySN9,omitempty"`
+	BatterySN10        string  `json:"BatterySN10,omitempty"`
+	BatterySN11        string  `json:"BatterySN11,omitempty"`
+	BatterySN12        string  `json:"BatterySN12,omitempty"`
+	BatterySN13        string  `json:"BatterySN13,omitempty"`
+	BatterySN14        string  `json:"BatterySN14,omitempty"`
+	BatterySN15        string  `json:"BatterySN15,omitempty"`
+	BatterySN16        string  `json:"BatterySN16,omitempty"`
+	BatterySN17        string  `json:"BatterySN17,omitempty"`
+	BatterySN18        string  `json:"BatterySN18,omitempty"`
+	BMSVersion         string  `json:"BMSVersion,omitempty"`
+	EMSVersion         string  `json:"EMSVersion"`
+	InvVersion         string  `json:"InvVersion"`
+	InvSN              string  `json:"InvSN"`
+	ACDC               string  `json:"ACDC"`
+	Generator          bool    `json:"Generator"`
+	BackUpBox          bool    `json:"BackUpBox"`
+	Fan                bool    `json:"Fan"`
+	GridCharge         bool    `json:"GridCharge"` //true
+	GridChargeWE       bool    `json:"GridChargeWE"`
+	CtrDis             bool    `json:"CtrDis"`
+	CtrDisWE           bool    `json:"CtrDisWE"`
+	TimeChaF1          int     `json:"TimeChaF1,string"`
+	TimeChaE1          int     `json:"TimeChaE1,string"`
+	TimeChaF2          int     `json:"TimeChaF2,string"`
+	TimeChaE2          int     `json:"TimeChaE2,string"`
+	TimeDisF1          int     `json:"TimeDisF1,string"`
+	TimeDisE1          int     `json:"TimeDisE1,string"`
+	TimeDisF2          int     `json:"TimeDisF2,string"`
+	TimeDisE2          int     `json:"TimeDisE2,string"`
+	BatHighCap         float32 `json:"BatHighCap,string"`
+	BatHighCapWE       float32 `json:"BatHighCapWE,string"`
+	BatUseCap          float32 `json:"BatUseCap,string"`
+	BatUseCapWE        float32 `json:"BatUseCapWE,string"`
+	SetMode            int     `json:"SetMode,string"`
+	SetPhase           int     `json:"SetPhase,string"`
+	SetFeed            int     `json:"SetFeed,string"`
+	BakBoxSN           string  `json:"BakBoxSN"`
+	SCBSN              string  `json:"SCBSN,omitempty"`
+	BakBoxVer          string  `json:"BakBoxVer,omitempty"`
+	SCBVer             string  `json:"SCBVer,omitempty"`
+	BMUModel           string  `json:"BMUModel,omitempty"`
+	GeneratorMode      string  `json:"GeneratorMode"`
+	GCSOCStart         string  `json:"GCSOCStart"`
+	GCSOCEnd           string  `json:"GCSOCEnd"`
+	GCTimeStart        string  `json:"GCTimeStart"`
+	GCTimeEnd          string  `json:"GCTimeEnd"`
+	GCOutputMode       string  `json:"GCOutputMode"`
+	GCChargePower      string  `json:"GCChargePower"`
+	GCRatedPower       string  `json:"GCRatedPower"`
+	EmsLanguage        int     `json:"EmsLanguage"`
+	L1Priority         int     `json:"L1Priority,string"`
+	L2Priority         int     `json:"L2Priority,string"`
+	L3Priority         int     `json:"L3Priority,string"`
+	L1SocLimit         float32 `json:"L1SocLimit,string"`
+	L2SocLimit         float32 `json:"L2SocLimit,string"`
+	L3SocLimit         float32 `json:"L3SocLimit,string"`
+	FirmwareVersion    string  `json:"FirmwareVersion"`
+	OnGridCap          float32 `json:"OnGridCap,string"`
+	StorageCap         float32 `json:"StorageCap,string"`
+	BatReady           int     `json:"BatReady,string"`
+	MeterACNegate      int     `json:"MeterACNegate,string"`
+	MeterDCNegate      int     `json:"MeterDCNegate,string"`
+	Safe               int     `json:"Safe,string"`
+	PowerFact          int     `json:"PowerFact,string"`
+	Volt5MinAvg        int     `json:"Volt5MinAvg,string"`
+	Volt10MinAvg       int     `json:"Volt10MinAvg,string"`
+	TempThreshold      int     `json:"TempThreshold,string"`
+	OutCurProtect      int     `json:"OutCurProtect,string"`
+	DCI                int     `json:"DCI,string"`
+	RCD                int     `json:"RCD,string"`
+	PvISO              int     `json:"PvISO,string"`
+	ChargeBoostCur     int     `json:"ChargeBoostCur,string"`
+	Channel1           int     `json:"Channel1,string"`
+	ControlMode1       int     `json:"ControlMode1,string"`
+	StartTime1A        string  `json:"StartTime1A"`
+	EndTime1A          string  `json:"EndTime1A"`
+	StartTime1B        string  `json:"StartTime1B"`
+	EndTime1B          string  `json:"EndTime1B"`
+	Date1              string  `json:"Date1"`
+	ChargeSOC1         string  `json:"ChargeSOC1,omitempty"`
+	ChargeMode1        string  `json:"ChargeMode1"`
+	ChargeWeekend      int     `json:"ChargeWeekend,string"`
+	ChargeWorkDays     int     `json:"ChargeWorkDays,string"`
+	UPS1               string  `json:"UPS1"`
+	SwitchOn1          string  `json:"SwitchOn1"`
+	SwitchOff1         string  `json:"SwitchOff1"`
+	Delay1             string  `json:"Delay1"`
+	Duration1          string  `json:"Duration1"`
+	Pause1             string  `json:"Pause1"`
+	Channel2           string  `json:"Channel2"`
+	ControlMode2       string  `json:"ControlMode2"`
+	StartTime2A        string  `json:"StartTime2A"`
+	EndTime2A          string  `json:"EndTime2A"`
+	StartTime2B        string  `json:"StartTime2B"`
+	EndTime2B          string  `json:"EndTime2B"`
+	Date2              string  `json:"Date2"`
+	ChargeSOC2         string  `json:"ChargeSOC2,omitempty"`
+	ChargeMode2        string  `json:"ChargeMode2"`
+	UPS2               string  `json:"UPS2"`
+	SwitchOn2          string  `json:"SwitchOn2"`
+	SwitchOff2         string  `json:"SwitchOff2"`
+	Delay2             string  `json:"Delay2"`
+	Duration2          string  `json:"Duration2"`
+	Pause2             string  `json:"Pause2"`
+	UseCt              string  `json:"use_ct"`
+	CtRate             string  `json:"ct_rate"`
+	InstallModule      string  `json:"InstallModule"`
+	StringAE           string  `json:"StringAE"`
+	StringBE           string  `json:"StringBE"`
+	StringCE           string  `json:"StringCE"`
+	NetType            string  `json:"NetType"`
+	WifiSN             string  `json:"WifiSN"`
+	WifiSW             string  `json:"WifiSW"`
+	WifiHW             string  `json:"WifiHW"`
+	SelfUseOrEconomic  int     `json:"SelfUseOrEconomic,string"`
+	DG_Cap             int     `json:"DG_Cap,string"`
+	FAAEnable          int     `json:"FAAEnable,string"`
+	ReliefMode         int     `json:"ReliefMode"`
 }
 
 type Response interface{}
@@ -354,7 +373,7 @@ func (p *Timestamp) UnmarshalJSON(bytes []byte) error {
 		return err
 	}
 	// 2 - Parse the unix timestamp "2021/08/15 00:27:34"
-	loc, _ := time.LoadLocation(gLocation)
+	loc, _ := time.LoadLocation(gTZLocation)
 	*&p.Time, err = time.ParseInLocation(
 		"2006/01/02 15:04:05",
 		raw,
@@ -381,7 +400,7 @@ func UnmarshalJSON(rawData []byte) (result Response, err error) {
 		} else {
 			result = jsonResult
 		}
-	} else if bytes.Index(rawData, []byte("ZipCode")) >= 0 {
+	} else if bytes.Index(rawData, []byte(CONFIGRSPATTERN)) >= 0 {
 		jsonResult := ConfigRS{}
 		err = json.Unmarshal(rawData, &jsonResult)
 		if len(jsonResult.ZipCode) == 0 {
@@ -393,7 +412,7 @@ func UnmarshalJSON(rawData []byte) (result Response, err error) {
 		jsonResult := AuthRQ{}
 		err = json.Unmarshal(rawData, &jsonResult)
 		if len(jsonResult.UserName) == 0 {
-			ErrorLog("decoding AuthRQ" + string(rawData))
+			ErrorLog("decoding AuthRQ: " + string(rawData))
 		} else {
 			result = jsonResult
 		}
@@ -401,23 +420,23 @@ func UnmarshalJSON(rawData []byte) (result Response, err error) {
 		jsonResult := SuccessRS{}
 		err = json.Unmarshal(rawData, &jsonResult)
 		if len(jsonResult.Status) == 0 {
-			ErrorLog("decoding SuccessRS" + string(rawData))
+			ErrorLog("decoding SuccessRS: " + string(rawData))
 		} else {
 			result = jsonResult
 		}
-	} else if bytes.Index(rawData, []byte("{\"SN\"")) >= 0 {
+	} else if bytes.Index(rawData, []byte(SERIALRQPATTERN)) >= 0 {
 		jsonResult := SerialRQ{}
 		err = json.Unmarshal(rawData, &jsonResult)
 		if len(jsonResult.SN) == 0 {
-			ErrorLog("decoding SerialRQ" + string(rawData))
+			ErrorLog("decoding SerialRQ: " + string(rawData))
 		} else {
 			result = jsonResult
 		}
 	} else if bytes.Index(rawData, []byte("{\"Command\"")) >= 0 {
 		jsonResult := CommandRQ{}
 		err = json.Unmarshal(rawData, &jsonResult)
-		if len(jsonResult.CmdIndex) == 0 {
-			ErrorLog("decoding CommandRQ" + string(rawData))
+		if jsonResult.CmdIndex <= 0 {
+			ErrorLog("decoding CommandRQ: " + string(rawData))
 		} else {
 			result = jsonResult
 		}
@@ -425,7 +444,7 @@ func UnmarshalJSON(rawData []byte) (result Response, err error) {
 		jsonResult := CommandIndexRQ{}
 		err = json.Unmarshal(rawData, &jsonResult)
 		if len(jsonResult.CmdIndex) == 0 {
-			ErrorLog("decoding CommandIndexRQ" + string(rawData))
+			ErrorLog("decoding CommandIndexRQ: " + string(rawData))
 		} else {
 			result = jsonResult
 		}

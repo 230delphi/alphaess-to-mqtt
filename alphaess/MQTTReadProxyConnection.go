@@ -53,16 +53,16 @@ func SimpleCopyProxyConnection(dst io.ReadWriteCloser, src io.ReadWriteCloser, d
 	}
 	_, err = io.Copy(output, src)
 
-	ExceptionLog(err)
+	ExceptionLog(err, "SRC:"+srcName)
 	if buf2 != nil {
 		_ = buf2.Close()
 	}
 
 	ReportStatistics(err, srcName, dstName)
 	err = dst.Close()
-	ExceptionLog(err)
+	ExceptionLog(err, "SRC:"+srcName)
 	err = src.Close()
-	ExceptionLog(err)
+	ExceptionLog(err, "SRC:"+srcName)
 }
 
 func ReportStatistics(err error, srcName string, dstName string) {

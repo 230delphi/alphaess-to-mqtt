@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var gLoggingLevel int = 0 // 0 Error only; 1 Debug; 2 Info
+var gLoggingLevel = 0 // 0 Error only; 1 Debug; 2 Info
 
 func CheckError(e error) {
 	if e != nil {
@@ -25,7 +25,7 @@ func DebugLog(msg string) {
 
 func InfoLog(msg string) {
 	if gLoggingLevel > 0 {
-		log.Println(msg)
+		log.Println("INFO:" + msg)
 	}
 }
 
@@ -33,9 +33,13 @@ func ErrorLog(msg string) {
 	log.Println("ERROR:" + msg)
 }
 
-func ExceptionLog(errorResult error) {
+func WarningLog(msg string) {
+	log.Println("WARNING:" + msg)
+}
+
+func ExceptionLog(errorResult error, context string) {
 	if errorResult != nil {
-		ErrorLog("EXP:" + errorResult.Error())
+		ErrorLog("EXP:" + context + ": " + errorResult.Error())
 	}
 }
 
