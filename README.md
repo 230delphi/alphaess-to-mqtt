@@ -1,7 +1,7 @@
 # alphaess-to-mqtt
 
 [**AlphaESS**](https://www.alphaess.com) are a provider of Solar/battery systems. System information is sent to cloud servers enabling their mobile Apps.
-This project utilises a proxy library to intercept that data and send it to a [Home Assistant](https://www.home-assistant.io/) (HA) instance (via [MQTT discovery](https://www.home-assistant.io/docs/mqtt/discovery/)).
+This project utilises a proxy [library](https://github.com/230delphi/go-any-proxy) (originally built by [Ryan Chapman](http://blog.rchapman.org/posts/Transparently_proxying_any_tcp_connection/)) to intercept that data and send it to a [Home Assistant](https://www.home-assistant.io/) (HA) instance (via [MQTT discovery](https://www.home-assistant.io/docs/mqtt/discovery/)).
 
 There are currently 2 implementations:
 * Read only - simply mirrors the data (sent to the server every 10 seconds) to HA allowing the alphaess.com mobile apps continue as normal.
@@ -150,3 +150,43 @@ utility_meter:
     cycle: daily
  ```
 
+### 5. Example use in Home Assistant Script
+
+ ```javascript
+# Note: Configuration is based on schedule
+#  charging will be re-enabled on the following day unless explicity disabled or configuration is reset from cloud.
+#  these schedules will not be reflected in the could app.
+
+EnableBatteryChargeNow:  
+    alias: Enable Battery Charging now
+    sequence:
+        - service: mqtt.publish
+          data_template:
+            topic: "homeassistant/sensor/alphaess1/action/chargebattery"
+            payload: '{ \
+                "GridCharge":true
+                "StartHour":-1
+                "MinimumDuration":5
+                "BatHighCap":40
+                }'
+
+DisableBatteryChargeNow:
+    alias: Disable Battery Charge
+    sequence:
+        - service: mqtt.publish
+          data_template:
+            topic: "homeassistant/sensor/alphaess1/action/chargebattery"
+            payload: '{ \
+                "GridCharge":false
+                }'
+
+EnableBatteryChargeAt1:
+    alias: Enable Battery Charge At 1am
+    sequence:
+        - service: mqtt.publish
+          data_template:
+            topic: "homeassistant/sensor/alphaess1/action/chargebattery"
+            payload: '{ \
+                "GridCharge":false
+                }'
+ ```
