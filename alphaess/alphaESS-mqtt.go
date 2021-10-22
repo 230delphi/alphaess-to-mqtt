@@ -265,8 +265,11 @@ func buildConfigObject(action *ChargeBatteryAction) *ConfigRS {
 func getChargeBatteryAction(payload []byte) (batteryAction *ChargeBatteryAction) {
 	action := ChargeBatteryAction{!gLastChargeState, -1, 10, 50}
 	//TODO read from payload
-	_ = json.Unmarshal(payload, &action)
-	DebugLog(fmt.Sprintf("ChargeBatteryAction:", action))
+	err := json.Unmarshal(payload, &action)
+	if err != nil {
+		ExceptionLog(err, "getChargeBatteryAction() Error Unmarshalling MQTT Payload: "+string(payload))
+	}
+	DebugLog(fmt.Sprintf("ChargeBatteryAction:", action, "\n from: ", string(payload)))
 	return &action
 }
 

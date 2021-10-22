@@ -151,42 +151,59 @@ utility_meter:
  ```
 
 ### 5. Example use in Home Assistant Script
+Service can be configured with a JSON Payload with 4 optional values as below. 
+Any *non-empty* or *corrupt / invalid json* payload will toggle on last known charging state with default values.
+* ```"GridCharge":true,``` sets the config to charge from Grid or not. - Default: Toggle last known state; proxy start state is false. (ie: first request will enable) 
+* ```"StartHour":1,``` sets the starting hour for charging. if omitted, or <0 it will execute now. (charging if ```GridCharge``` is true.) - default "-1" (now)
+* ```"MinimumDuration":60,``` Sets the minimum duration for charge. as scheduling is based on hour, this simply considers cross hour and midnight boundaries.
+ For example: enable now at 6.45pm for 10 mins, will enable until 7pm. set at 30 mins, it will enable until 8pm. - default 10 minutes
+* ```"BatHighCap":40``` Sets the high level charging point; alphaESS will stop charging at this point (but will not revert to battery until end of the schedule) - default 50%
 
  ```javascript
 # Note: Configuration is based on schedule
 #  charging will be re-enabled on the following day unless explicity disabled or configuration is reset from cloud.
 #  these schedules will not be reflected in the could app.
-
-EnableBatteryChargeNow:  
-    alias: Enable Battery Charging now
-    sequence:
-        - service: mqtt.publish
-          data_template:
-            topic: "homeassistant/sensor/alphaess1/action/chargebattery"
-            payload: '{ \
-                "GridCharge":true
-                "StartHour":-1
-                "MinimumDuration":5
-                "BatHighCap":40
-                }'
-
-DisableBatteryChargeNow:
-    alias: Disable Battery Charge
-    sequence:
-        - service: mqtt.publish
-          data_template:
-            topic: "homeassistant/sensor/alphaess1/action/chargebattery"
-            payload: '{ \
-                "GridCharge":false
-                }'
-
-EnableBatteryChargeAt1:
-    alias: Enable Battery Charge At 1am
-    sequence:
-        - service: mqtt.publish
-          data_template:
-            topic: "homeassistant/sensor/alphaess1/action/chargebattery"
-            payload: '{ \
-                "GridCharge":false
-                }'
+    
+# schedule the battery to run immediatly
+enable_battery_charge_now:
+  alias: Enable Battery Charging now
+  sequence:
+    - service: mqtt.publish
+      data_template:
+        topic: "homeassistant/sensor/alphaess1/action/chargebattery"
+        payload: >
+          {
+            "GridCharge":true,
+            "MinimumDuration":5,
+            "BatHighCap":40
+          }
+          
+# this will also disable any schedule
+disable_battery_charge_now:
+  alias: Disable Battery Charge
+  sequence:
+    - service: mqtt.publish
+      data_template:
+        topic: "homeassistant/sensor/alphaess1/action/chargebattery"
+        payload: >
+          {
+            "GridCharge":false
+          }
+          
+# this will effectivly disable any current charging and reset any sechdule to 1am
+# note, setting to MinimumDuration "60" will actually schedule for 2 hours (59min will set for 1 hour); 
+# for finer granularity just enable/disable the schedule on demand from HA. 
+enable_battery_charge_at1:
+  alias: Enable Battery Charge At 1am
+  sequence:
+    - service: mqtt.publish
+      data_template:
+        topic: "homeassistant/sensor/alphaess1/action/chargebattery"
+        payload: >
+          {
+            "GridCharge":true,
+            "StartHour":1,
+            "MinimumDuration":60,
+            "BatHighCap":40
+          }
  ```
