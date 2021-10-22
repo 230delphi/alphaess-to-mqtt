@@ -35,6 +35,7 @@ var gMQTTTimeoutSeconds int
 var gTopicBase string
 var gMQTTTopic string
 var gProxyConnectionImpl string
+var gMQTTBase = "homeassistant"
 var gChargeBatteryTopic = "/action/chargebattery"
 var gAttributesTopic = "/attributes"
 var gLastServerConfig ConfigRS
@@ -66,7 +67,7 @@ func initFlagConfig() {
 	flag.StringVar(&gMQTTUser, "MQTTUser", "", "MQTT username\n")
 	flag.StringVar(&gMQTTPassword, "MQTTPassword", "", "MQTT password\n")
 	flag.IntVar(&gMQTTTimeoutSeconds, "MQTTSendTimeout", 5, "MQTT timeout for sending message\n")
-	flag.StringVar(&gTopicBase, "MQTTTopicBase", "homeassistant/sensor/", "MQTT base topic. ")
+	flag.StringVar(&gTopicBase, "MQTTTopicBase", gMQTTBase+"/sensor/", "MQTT base topic. ")
 	flag.StringVar(&gAlphaEssInstance, "AlphaESSID", "alphaess1", "AlphaESS instance name, appended to MQTTTopicBase. All data is set on this topic eg: homeassisant/sensor/alphaess1/config\n")
 	flag.StringVar(&gLogList, "MSGLogging", "", "Messages to Log. Leave unset for no logging. Log all:\"*\"; log selected: \"GenericRQ,CommandIndexRQ,CommandRQ,ConfigRS,StatusRQ\"")
 	flag.StringVar(&gTZLocation, "TZLocation", "Local", "Timezone override to ensure time of collection is accurate.")
@@ -133,6 +134,7 @@ func initMQTT() (myClient mqtt.Client) {
 		panic("Failed to connect to MQTT: " + gMQTTBrokerAddress)
 	}
 	gChargeBatteryTopic = gMQTTTopic + gChargeBatteryTopic
+	gCommandRQTopic = gMQTTTopic + gCommandRQTopic
 	return myClient
 }
 
