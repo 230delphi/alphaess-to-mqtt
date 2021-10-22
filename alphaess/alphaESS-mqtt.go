@@ -55,10 +55,10 @@ type ConfigCommand struct {
 }
 
 type ChargeBatteryAction struct {
-	GridCharge      bool `json:"action"`             //startCharge|stopCharge
-	StartHour       int  `json:"hour,omitempty"`     // optional hour to start
-	MinimumDuration int  `json:"duration,omitempty"` // min minutes to be operating
-	BatHighCap      int  `json:"unit_of_measurement,omitempty"`
+	GridCharge      bool `json:"GridCharge"`                // set to charge or not
+	StartHour       int  `json:"StartHour,omitempty"`       // optional hour to start
+	MinimumDuration int  `json:"MinimumDuration,omitempty"` // minimum minutes to be charging
+	BatHighCap      int  `json:"BatHighCap,omitempty"`      // when to stop charging
 }
 
 func initFlagConfig() {
