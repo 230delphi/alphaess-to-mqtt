@@ -141,7 +141,7 @@ func InjectBytes(dst io.Writer, myMsgBytes []byte) {
 	mutex.Lock()
 	writen, err := dst.Write(myMsgBytes)
 	mutex.Unlock()
-	logMessage("InjectBytes()", myMsgBytes)
+	parseAndDebugMessage("InjectBytes()", myMsgBytes)
 	if err != nil {
 		ErrorLog("Error writing message: " + clientStr)
 		ExceptionLog(err, "InjectBytes()")

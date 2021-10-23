@@ -2,13 +2,17 @@ package alphaess
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/ghostiam/binstruct"
+	"github.com/sigurn/crc16"
+	"strings"
 	"time"
 )
 
-//const DefaultExpiry = 1500 // seconds after which to expire a sensor value;
 // TODO Unit tests for AlphaESS-definitions; parse from files.
+// Definition of AlphaESS Messages and parsing
 
 const SERIALRQPATTERN = "{\"SN\""
 const CONFIGRSPATTERN = "ZipCode"
@@ -369,7 +373,7 @@ func (p *Timestamp) UnmarshalJSON(bytes []byte) error {
 	var raw string
 	err := json.Unmarshal(bytes, &raw)
 	if err != nil {
-		fmt.Printf("error decoding timestamp: %s\n", err)
+		ErrorLog(fmt.Sprintf("error decoding timestamp: %s", err))
 		return err
 	}
 	// 2 - Parse the unix timestamp "2021/08/15 00:27:34"
@@ -458,8 +462,82 @@ func UnmarshalJSON(rawData []byte) (result Response, err error) {
 				result = jsonResult
 			}
 		} else {
-			DebugLog("unknown message type, trying GenericRQ: " + err.Error())
+			DebugLog("unknown message type found as GenericRQ: " + err.Error())
+			if jsonResult.MsgType == "Socket" {
+				WarningLog("Connection Reset:" + jsonResult.MsgContent)
+			}
+			result = jsonResult
 		}
 	}
 	return
+}
+
+func parseAndDebugMessage(context string, msg []byte) (body []byte, head []byte, dataLen int32, checksumU16 uint16) {
+	body, head, dataLen, checksumU16 = parseMessage(msg)
+	if DebugEnabled() {
+		//Crc16Modbus : https://pkg.go.dev/github.com/sigurn/crc16#section-readme
+		DebugLog(fmt.Sprintf("%s: Header: %#v %d\nBody: '%s'", context, head, dataLen, string(body)))
+		ValidateChecksum(msg, checksumU16)
+	}
+	return body, head, dataLen, checksumU16
+}
+
+func parseMessage(msg []byte) (body []byte, head []byte, dataLen int32, checksumU16 uint16) {
+	fullHeader := msg[:7]
+	body = msg[7 : len(msg)-2]
+	checksum := msg[len(msg)-2:]
+	reader := binstruct.NewReaderFromBytes(fullHeader, binary.BigEndian, false)
+	_, head, _ = reader.ReadBytes(3)
+	dataLen, _ = reader.ReadInt32()
+	csReader := binstruct.NewReaderFromBytes(checksum, binary.BigEndian, false)
+	checksumU16, _ = csReader.ReadUint16()
+	return body, head, dataLen, checksumU16
+}
+
+func getCheckSum(toBeCheckSummed []byte) uint16 {
+	table := crc16.MakeTable(crc16.CRC16_MODBUS)
+	myCheck := crc16.Checksum(toBeCheckSummed, table)
+	return myCheck
+}
+
+func ValidateChecksum(fullMsg []byte, checksumU16 uint16) (result bool) {
+	result = false
+	myCheck := getCheckSum(fullMsg[:len(fullMsg)-2])
+	if checksumU16 != myCheck {
+		ErrorLog("checksum failed on:" + string(fullMsg[:len(fullMsg)-2]))
+	} else if checksumU16 <= 0 {
+		ErrorLog("Failed to read checksum from message.")
+	}
+	if checksumU16 == myCheck {
+		DebugLog(fmt.Sprintf("Checksum: %d", checksumU16))
+		result = true
+	}
+	return result
+}
+
+func AddHeaderAndCheckSum(data []byte, byteHeader []byte) (result []byte) {
+	byteLen := make([]byte, 4)
+	binary.BigEndian.PutUint32(byteLen, uint32(len(data)))
+	if len(byteLen) < 4 {
+		pad := make([]byte, 4-len(byteLen))
+		byteLen = append(pad, byteLen...)
+	}
+	byteHeader = append(byteHeader, byteLen...)
+	bytesForChecksum := append(byteHeader, data...)
+	myCheck := getCheckSum(bytesForChecksum)
+	byteCSum := make([]byte, 2)
+	binary.BigEndian.PutUint16(byteCSum, myCheck)
+	result = append(bytesForChecksum, byteCSum...)
+	return result
+}
+
+func logResponseObject(obj Response, source string) {
+	//remove package preface "alphaess."
+	var myType = strings.ReplaceAll(fmt.Sprintf("%T", obj), "alphaess.", "")
+	objString, _ := json.Marshal(obj)
+	if strings.Contains(gLogList, myType) {
+		InfoLog("SRC:" + source + " type:" + myType + " : " + string(objString))
+	} else if strings.Index(gLogList, "*") == 0 {
+		InfoLog("SRC:" + source + " type:" + myType + " : " + string(objString))
+	}
 }

@@ -1,23 +1,23 @@
 package alphaess
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"github.com/230delphi/go-any-proxy/anyproxy"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/ghostiam/binstruct"
 	"github.com/namsral/flag"
-	"github.com/sigurn/crc16"
 	"log"
 	"math"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
 const MinMessageSize = 10
+const COMMANDRQTOPIC = "/LastCommand"
+const SERIALRQTOPIC = "/LastSerialRQ"
+const ATTRIBUTESTOPIC = "/attributes"
+const CHARGEBATTERYTOPIC = "/action/chargebattery"
 
 var COMMANDHEADER = []byte{0x1, 0x1, 0x8}
 var SUCCESSHEADER1 = []byte{0x1, 0x2, 0x0}
@@ -36,27 +36,22 @@ var gTopicBase string
 var gMQTTTopic string
 var gProxyConnectionImpl string
 var gMQTTBase = "homeassistant"
-var gChargeBatteryTopic = "/action/chargebattery"
-var gAttributesTopic = "/attributes"
+var gChargeBatteryTopic string
+var gCommandRQTopic string
+
 var gLastServerConfig ConfigRS
 var gLastClientConfig ConfigRS
 var gLastChargeState = false
 var gLastCommandRQ CommandRQ
-var gCommandRQTopic = "/LastCommand"
 var gLastSerialRQ SerialRQ
-var gSerialRQTopic = "/LastSerialRQ"
+
 var gActiveConversations []*conversationType = nil
+var gSystemStarted = false
 
 // TODO integration tests for alphaESS MQTT config and implementation.
 
-type ConfigCommand struct {
-	Command []byte
-	Serial  []byte
-	Config  []byte
-}
-
 type ChargeBatteryAction struct {
-	GridCharge      bool `json:"GridCharge"`                // set to charge or not
+	GridCharge      bool `json:"GridCharge,string"`         // set to charge or not
 	StartHour       int  `json:"StartHour,omitempty"`       // optional hour to start
 	MinimumDuration int  `json:"MinimumDuration,omitempty"` // minimum minutes to be charging
 	BatHighCap      int  `json:"BatHighCap,omitempty"`      // when to stop charging
@@ -73,11 +68,6 @@ func initFlagConfig() {
 	flag.StringVar(&gTZLocation, "TZLocation", "Local", "Timezone override to ensure time of collection is accurate.")
 	gMQTTTopic = gTopicBase + gAlphaEssInstance
 	DebugLog("initFlagConfig complete" + gMQTTBrokerAddress)
-}
-
-func printConfig() {
-	fmt.Printf(gMQTTBrokerAddress)
-	fmt.Printf(gMQTTUser)
 }
 
 func GetMQTTConnection() (result anyproxy.ProxyConnectionManager) {
@@ -133,8 +123,8 @@ func initMQTT() (myClient mqtt.Client) {
 	if !connectClient(myClient) {
 		panic("Failed to connect to MQTT: " + gMQTTBrokerAddress)
 	}
-	gChargeBatteryTopic = gMQTTTopic + gChargeBatteryTopic
-	gCommandRQTopic = gMQTTTopic + gCommandRQTopic
+	gChargeBatteryTopic = gMQTTTopic + CHARGEBATTERYTOPIC
+	gCommandRQTopic = gMQTTTopic + COMMANDRQTOPIC
 	return myClient
 }
 
@@ -151,66 +141,70 @@ func getTimeNowInTimeZone() time.Time {
 
 var mqtPublishHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	DebugLog("TOPIC: " + msg.Topic() + " : " + string(msg.Payload()))
-	switch msg.Topic() {
-	case gChargeBatteryTopic:
-		InfoLog("MQTT Received on topic " + msg.Topic())
-		action := getChargeBatteryAction(msg.Payload())
-		injectConfigObject := buildConfigObject(action)
-		gLastChargeState = action.GridCharge
-		injectConfigBytes, _ := json.Marshal(injectConfigObject)
-		injectConfigBytes = AddHeaderAndCheckSum(injectConfigBytes, CONFIGHEADER)
-		if gLastCommandRQ.CmdIndex == 0 {
-			gLastCommandRQ.CmdIndex = 51422064
-			gLastCommandRQ.Command = "SetConfig"
-		}
-		gLastCommandRQ.CmdIndex = gLastCommandRQ.CmdIndex + 1
-		injectSetCommand, _ := json.Marshal(gLastCommandRQ)
-		injectSetCommand = AddHeaderAndCheckSum(injectSetCommand, COMMANDHEADER)
-		injectSuccess1 := AddHeaderAndCheckSum([]byte("{\"Status\":\"Success\"}"), SUCCESSHEADER1)
-		injectSuccess2 := AddHeaderAndCheckSum([]byte("{\"Status\":\"Success\"}"), SUCCESSHEADER2)
+	if !gSystemStarted {
+		WarningLog("Ignoring MQTT Message Received on topic before system started. " + msg.Topic())
+	} else {
+		switch msg.Topic() {
+		case gChargeBatteryTopic:
+			InfoLog("MQTT Received on topic " + msg.Topic())
+			action := getChargeBatteryAction(msg.Payload())
+			injectConfigObject := buildConfigObject(action)
+			gLastChargeState = action.GridCharge
+			injectConfigBytes, _ := json.Marshal(injectConfigObject)
+			injectConfigBytes = AddHeaderAndCheckSum(injectConfigBytes, CONFIGHEADER)
+			if gLastCommandRQ.CmdIndex == 0 {
+				gLastCommandRQ.CmdIndex = 51422064
+				gLastCommandRQ.Command = "SetConfig"
+			}
+			gLastCommandRQ.CmdIndex = gLastCommandRQ.CmdIndex + 1
+			injectSetCommand, _ := json.Marshal(gLastCommandRQ)
+			injectSetCommand = AddHeaderAndCheckSum(injectSetCommand, COMMANDHEADER)
+			injectSuccess1 := AddHeaderAndCheckSum([]byte("{\"Status\":\"Success\"}"), SUCCESSHEADER1)
+			injectSuccess2 := AddHeaderAndCheckSum([]byte("{\"Status\":\"Success\"}"), SUCCESSHEADER2)
 
-		configConversation := conversationType{
-			indexOfNextAction: 0,
-			actions: []actionType{
-				{
-					"start convo",
-					INJECT,
-					SERVER,
-					injectSetCommand,
-					nil,
+			configConversation := conversationType{
+				indexOfNextAction: 0,
+				actions: []actionType{
+					{
+						"start convo",
+						INJECT,
+						SERVER,
+						injectSetCommand,
+						nil,
+					},
+					{
+						"ACK response",
+						RESPOND,
+						CLIENT,
+						[]byte("\"Status\":\"Success\"}"),
+						injectSuccess1,
+					},
+					{
+						"RS SN w/Config",
+						RESPOND,
+						CLIENT,
+						[]byte(SERIALRQPATTERN),
+						injectConfigBytes,
+					},
+					{
+						"ACK config RS",
+						RESPOND,
+						CLIENT,
+						[]byte(CONFIGRSPATTERN),
+						injectSuccess2,
+					},
 				},
-				{
-					"ACK response",
-					RESPOND,
-					CLIENT,
-					[]byte("\"Status\":\"Success\"}"),
-					injectSuccess1,
-				},
-				{
-					"RS SN w/Config",
-					RESPOND,
-					CLIENT,
-					[]byte(SERIALRQPATTERN),
-					injectConfigBytes,
-				},
-				{
-					"ACK config RS",
-					RESPOND,
-					CLIENT,
-					[]byte(CONFIGRSPATTERN),
-					injectSuccess2,
-				},
-			},
-			lastUpdate: 0,
+				lastUpdate: 0,
+			}
+			gActiveConversations = []*conversationType{&configConversation}
+		case COMMANDRQTOPIC:
+			DebugLog("MQTT Received on topic " + msg.Topic())
+			if gLastCommandRQ.CmdIndex < 10 {
+				_ = json.Unmarshal(msg.Payload(), &gLastCommandRQ)
+			}
+		default:
+			InfoLog("Ignored message Received on topic::" + msg.Topic())
 		}
-		gActiveConversations = []*conversationType{&configConversation}
-	case gCommandRQTopic:
-		DebugLog("MQTT Received on topic " + msg.Topic())
-		if gLastCommandRQ.CmdIndex < 10 {
-			_ = json.Unmarshal(msg.Payload(), &gLastCommandRQ)
-		}
-	default:
-		InfoLog("Ignored message Received on topic::" + msg.Topic())
 	}
 }
 
@@ -266,17 +260,16 @@ func buildConfigObject(action *ChargeBatteryAction) *ConfigRS {
 
 func getChargeBatteryAction(payload []byte) (batteryAction *ChargeBatteryAction) {
 	action := ChargeBatteryAction{!gLastChargeState, -1, 10, 50}
-	//TODO read from payload
 	err := json.Unmarshal(payload, &action)
 	if err != nil {
 		ExceptionLog(err, "getChargeBatteryAction() Error Unmarshalling MQTT Payload: "+string(payload))
 	}
-	DebugLog(fmt.Sprintf("ChargeBatteryAction:", action, "\n from: ", string(payload)))
+	DebugLog(fmt.Sprintf("ChargeBatteryAction: %v \n from: %s", action, string(payload)))
 	return &action
 }
 
 func connLostHandler(client mqtt.Client, err error) {
-	fmt.Printf("Connection lost, reason: %v\n", err)
+	ErrorLog(fmt.Sprintf("Connection lost, reason: %v", err))
 	connectClient(client)
 	ErrorLog("Reconnected MQTT")
 }
@@ -300,7 +293,7 @@ func publishMQTT(mqClient mqtt.Client, topic string, msg string) {
 	go func() {
 		var success = t.WaitTimeout(time.Duration(gMQTTTimeoutSeconds) * time.Second)
 		if t.Error() != nil {
-			fmt.Printf("Failed to send message: %v\n", t.Error())
+			ErrorLog(fmt.Sprint("Failed to send message: %v\n", t.Error()))
 			ExceptionLog(t.Error(), "publishMQTT()")
 		}
 		if !success {
@@ -325,20 +318,10 @@ func init() {
 	gClient = initMQTT()
 }
 
-func logResponse(obj Response, source string) {
-	//remove package preface "alphaess."
-	var myType = strings.ReplaceAll(fmt.Sprintf("%T", obj), "alphaess.", "")
-	objString, _ := json.Marshal(obj)
-	if strings.Contains(gLogList, myType) {
-		InfoLog("SRC:" + source + " type:" + myType + " : " + string(objString))
-	} else if strings.Index(gLogList, "*") == 0 {
-		InfoLog("SRC:" + source + " type:" + myType + " : " + string(objString))
-	}
-}
-
-func publishAlphaESSStats(obj Response, source string) {
+func publishAlphaESSStats(obj Response, source string) (result bool) {
 	var destination string
-	logResponse(obj, source)
+	logResponseObject(obj, source)
+	result = true
 	switch v := obj.(type) {
 	case StatusRQ:
 		destination = "/state"
@@ -351,7 +334,7 @@ func publishAlphaESSStats(obj Response, source string) {
 		publishMQTT(gClient, gMQTTTopic+destination, string(res))
 		InfoLog(fmt.Sprint("SRC:"+source+"; MQTT Published::", v))
 	case ConfigRS:
-		destination = gAttributesTopic
+		destination = ATTRIBUTESTOPIC
 		res, _ := json.Marshal(v)
 		publishMQTT(gClient, gMQTTTopic+destination, string(res))
 		if source == "directserver" {
@@ -362,92 +345,19 @@ func publishAlphaESSStats(obj Response, source string) {
 		InfoLog(fmt.Sprint("SRC:"+source+"; MQTT Published::", v))
 	case CommandRQ:
 		gLastCommandRQ = v
-		destination = gCommandRQTopic
+		destination = COMMANDRQTOPIC
 		res, _ := json.Marshal(v)
 		publishMQTT(gClient, gMQTTTopic+destination, string(res))
 		InfoLog(fmt.Sprint("SRC:"+source+"; MQTT Published::", v))
 	case SerialRQ:
 		gLastSerialRQ = v
-		destination = gSerialRQTopic
+		destination = SERIALRQTOPIC
 		res, _ := json.Marshal(v)
 		publishMQTT(gClient, gMQTTTopic+destination, string(res))
 		InfoLog(fmt.Sprint("SRC:"+source+"; MQTT Published::", v))
 	default:
 		DebugLog(fmt.Sprint("SRC:"+source+"; MQTT not publishing message type::", v))
+		result = false
 	}
-}
-
-func AddHeaderAndCheckSum(data []byte, byteHeader []byte) (result []byte) {
-	byteLen := make([]byte, 4)
-	binary.BigEndian.PutUint32(byteLen, uint32(len(data)))
-	if len(byteLen) < 4 {
-		pad := make([]byte, 4-len(byteLen))
-		byteLen = append(pad, byteLen...)
-	}
-	byteHeader = append(byteHeader, byteLen...)
-	bytesForChecksum := append(byteHeader, data...)
-	// checksum is uint16 to bytes
-	table := crc16.MakeTable(crc16.CRC16_MODBUS)
-	myCheck := crc16.Checksum(bytesForChecksum, table)
-	byteCSum := make([]byte, 2)
-	binary.BigEndian.PutUint16(byteCSum, myCheck)
-	result = append(bytesForChecksum, byteCSum...)
 	return result
-}
-
-func testCheckSum(head []byte, d []byte, checksum []byte) {
-	reader := binstruct.NewReaderFromBytes(head, binary.BigEndian, false)
-	an, b, err := reader.ReadBytes(3)
-	if err != nil {
-		ErrorLog("Error reading first 3 bytes")
-	}
-	//InfoLog(fmt.Sprintln("Read %d bytes: %#v\n", an, b))
-	//fmt.Println("Read %d bytes: %#v\n", an, b)
-	fmt.Printf("Read %d bytes: %#v\n", an, b)
-	dataLen, err := reader.ReadInt32()
-	if err != nil {
-		ErrorLog("Error reading len")
-	}
-	if dataLen != int32(len(d)) {
-		ErrorLog("Error in Length:" + strconv.Itoa(int(dataLen)))
-	}
-	csReader := binstruct.NewReaderFromBytes(checksum, binary.BigEndian, false)
-	checksumU16, err := csReader.ReadUint16()
-	if err != nil {
-		ErrorLog("ERROR reading checksum")
-	}
-	toBeCheckSummed := append(head[:], d[:]...)
-	//Crc16Modbus : https://pkg.go.dev/github.com/sigurn/crc16#section-readme
-	table := crc16.MakeTable(crc16.CRC16_MODBUS)
-	myCheck := crc16.Checksum(toBeCheckSummed, table)
-	if checksum != nil && (checksumU16 != myCheck) {
-		ErrorLog("checksum failed:" + string(toBeCheckSummed))
-	} else if checksum == nil {
-		ErrorLog("<=1 length checksum")
-	}
-}
-
-func logMessage(context string, msg []byte) {
-	head := msg[:7]
-	body := msg[7 : len(msg)-2]
-	checksum := msg[len(msg)-2:]
-	reader := binstruct.NewReaderFromBytes(head, binary.BigEndian, false)
-	_, b, _ := reader.ReadBytes(3)
-	dataLen, _ := reader.ReadInt32()
-	fmt.Printf("%s: Header: %#v %d\n", context, b, dataLen)
-	fmt.Printf("Body: '%s'\n", string(body))
-	csReader := binstruct.NewReaderFromBytes(checksum, binary.BigEndian, false)
-	checksumU16, _ := csReader.ReadUint16()
-	toBeCheckSummed := msg[:len(msg)-2]
-	//Crc16Modbus : https://pkg.go.dev/github.com/sigurn/crc16#section-readme
-	table := crc16.MakeTable(crc16.CRC16_MODBUS)
-	myCheck := crc16.Checksum(toBeCheckSummed, table)
-	if checksum != nil && (checksumU16 != myCheck) {
-		ErrorLog("checksum failed:" + string(toBeCheckSummed) + " from:" + string(checksum))
-	} else if checksum == nil {
-		fmt.Printf("Checksum Nil")
-	}
-	if checksumU16 == myCheck {
-		fmt.Printf("Checksum: %d\n", checksumU16)
-	}
 }

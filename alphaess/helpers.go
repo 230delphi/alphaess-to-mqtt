@@ -10,6 +10,14 @@ import (
 
 var gLoggingLevel = 0 // 0 Error only; 1 Debug; 2 Info
 
+func DebugEnabled() bool {
+	if gLoggingLevel == 1 {
+		return true
+	} else {
+		return false
+	}
+}
+
 func CheckError(e error) {
 	if e != nil {
 		DebugLog(e.Error())
@@ -18,13 +26,13 @@ func CheckError(e error) {
 }
 
 func DebugLog(msg string) {
-	if gLoggingLevel == 1 {
+	if DebugEnabled() {
 		log.Println(msg)
 	}
 }
 
 func InfoLog(msg string) {
-	if gLoggingLevel > 0 {
+	if gLoggingLevel > 1 {
 		log.Println("INFO:" + msg)
 	}
 }

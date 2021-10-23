@@ -124,7 +124,7 @@ func (into *MQTTInjectProxyConnection) copyBufferAndFilter(dst io.Writer, srcRea
 	for {
 		nr, er := src.Read(buf)
 		if nr > 0 {
-			logMessage("FROM:"+filter.getName(), buf[0:nr])
+			parseAndDebugMessage("FROM:"+filter.getName(), buf[0:nr])
 			// Apply filter to message received.
 			newBuffer, newResponse := filter.FilterMessages(buf, nr)
 			if newBuffer != nil { // Forward new buffer including any possible changes
@@ -152,7 +152,7 @@ func (into *MQTTInjectProxyConnection) copyBufferAndFilter(dst io.Writer, srcRea
 				nrCount := len(newResponse)
 				nw, ew := srcReadWriter.Write(newResponse)
 				mutex.Unlock()
-				logMessage("RESPOND to:"+filter.getName(), newResponse)
+				parseAndDebugMessage("RESPOND to:"+filter.getName(), newResponse)
 				if nw < 0 || nrCount < nw {
 					nw = 0
 					if ew == nil {
@@ -172,7 +172,6 @@ func (into *MQTTInjectProxyConnection) copyBufferAndFilter(dst io.Writer, srcRea
 		}
 		// Filter decides if it should inject into stream.
 		filter.InjectMessage(dst, buf[0:nr])
-
 		if er != nil {
 			if er != io.EOF {
 				err = er

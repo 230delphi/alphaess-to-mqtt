@@ -173,7 +173,7 @@ enable_battery_charge_now:
         topic: "homeassistant/sensor/alphaess1/action/chargebattery"
         payload: >
           {
-            "GridCharge":true,
+            "GridCharge":"true",
             "MinimumDuration":5,
             "BatHighCap":40
           }
@@ -187,7 +187,7 @@ disable_battery_charge_now:
         topic: "homeassistant/sensor/alphaess1/action/chargebattery"
         payload: >
           {
-            "GridCharge":false
+            "GridCharge":"false"
           }
           
 # this will effectivly disable any current charging and reset any sechdule to 1am
@@ -201,7 +201,7 @@ enable_battery_charge_at1:
         topic: "homeassistant/sensor/alphaess1/action/chargebattery"
         payload: >
           {
-            "GridCharge":true,
+            "GridCharge":"true",
             "StartHour":1,
             "MinimumDuration":60,
             "BatHighCap":40

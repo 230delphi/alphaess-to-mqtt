@@ -15,9 +15,7 @@ type MQTTWriter struct {
 }
 
 func (into *MQTTWriter) Write(newData []byte) (n int, err error) {
-	//DebugLog("MQTTWriter write()" + string(newData))
 	n = len(newData)
-	DebugLog("MQTTWriter write():" + strconv.Itoa(n))
 	into.parseForJSON(newData)
 	return n, err
 }
@@ -66,54 +64,19 @@ func (into *MQTTWriter) parseForJSON(data []byte) {
 	//TODO print warning when we get disconnected:
 	// {"MsgType":"Socket","MsgContent":"Socket is closed!","Description":"OK"}
 	// and after successful reconnect: client type:ConfigRS : {"SN":"AL2002321010043","Address":.....
+	myRecord, _, _, checksumU16 := parseMessage(data)
 	var err error
-	var start = bytes.Index(data, []byte("{\""))
-	var end = bytes.Index(data, []byte("\"}")) + 2
-	var counter = 0
-	var header []byte
-	var checksum []byte
-	for start >= 0 && end > MinMessageSize {
-		counter++
-		if start > 0 {
-			header = data[0:start]
-			data = data[start:]
-		} else {
-			header = nil
-			// no change to data
-		}
-		end = bytes.Index(data, []byte("\"}")) + 2
-		if end > MinMessageSize {
-			if end < len(data) {
-				checksum = data[end:]
-			} else {
-				checksum = nil
+	var start = bytes.Index(myRecord, []byte("{\""))
+	var end = bytes.Index(myRecord, []byte("\"}")) + 2
+	if ValidateChecksum(data, checksumU16) && start >= 0 && end > 0 {
+		var obj Response
+		obj, err = UnmarshalJSON(myRecord)
+		if obj != nil {
+			if publishAlphaESSStats(obj, into.mySource) && !gSystemStarted {
+				gSystemStarted = true // only set true after we successfully publish something.
 			}
-			var myRecord = data[0:end]
-			if bytes.Index(myRecord[2:], []byte("{\"")) > 0 {
-				ErrorLog("SRC:" + into.mySource + "; SUSPECT:: more than one" + string(data))
-			}
-			testCheckSum(header, myRecord, checksum)
-			var obj Response
-			obj, err = UnmarshalJSON(myRecord)
-			if obj != nil {
-				//DebugLog("SRC:" + into.mySource + "; Obj found; header:'" + string(header) + "'::"
-				//+ strconv.Itoa(len(header)) + " checksum:'" + string(checksum) + "'"+ "::"+ strconv.Itoa(len(checksum)))
-				publishAlphaESSStats(obj, into.mySource)
-			} else if err != nil {
-				ErrorLog("SRC:" + into.mySource + " Unmarshal failed:" + err.Error() + " data:" + string(myRecord))
-			}
+		} else if err != nil {
+			ErrorLog("SRC:" + into.mySource + " Unmarshal failed:" + err.Error() + " data:" + string(myRecord))
 		}
-		start = bytes.Index(data, []byte("{\""))
-		end = bytes.Index(data, []byte("\"}")) + 2
-		if start > 0 {
-			data = data[start:]
-			DebugLog("this should never happen?")
-		} else {
-			data = nil
-		}
-	}
-	if len(data) > 0 && start < 0 {
-		// empty buffer of non Json data
-		data = make([]byte, 0)
 	}
 }
