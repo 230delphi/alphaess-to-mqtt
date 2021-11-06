@@ -6,6 +6,7 @@ import (
 
 const DONOTEXPIRE int = 0
 const DEFAULTEXPIRY int = 300
+const DAYINSECONDS int = 60 * 60 * 24
 
 type HasMQTTConfig struct {
 	DeviceClass       string `json:"device_class,omitempty"`
@@ -20,6 +21,7 @@ type HasMQTTConfig struct {
 	//TODO look at adding HAS MQTT support for other fields
 	//state_class		  string `json:"state_class,omitempty"`
 	//icon_template		  string `json:"icon_template,omitempty"`
+	//delay_on			string
 }
 
 func PublishHASEntityConfig() {
@@ -174,15 +176,36 @@ func PublishHASEntityConfig() {
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTTopic+"/LoadTotal/config", string(res))
 
-	myHASConfig.StateTopic = gChargeBatteryTopic
-	myHASConfig.DeviceClass = ""
+	myHASConfig.StateTopic = gMQTTTopic + ATTRIBUTESTOPIC
+	myHASConfig.DeviceClass = "battery_charging"
 	myHASConfig.UnitOfMeasurement = ""
 	myHASConfig.ValueTemplate = "{{ value_json.GridCharge}}"
-	myHASConfig.Name = gAlphaEssInstance + " - Charging State"
+	myHASConfig.Name = gAlphaEssInstance + " - Last Charging Config State"
 	myHASConfig.Icon = "mdi:power"
-	myHASConfig.ExpireAfter = DONOTEXPIRE
+	myHASConfig.ExpireAfter = DAYINSECONDS
 	myHASConfig.PayloadOn = "true"
 	myHASConfig.PayloadOff = "false"
 	res, _ = json.Marshal(myHASConfig)
-	publishMQTT(mqClient, gMQTTBase+"/binary_sensor/"+gAlphaEssInstance+"/ChargeState/config", string(res))
+	publishMQTT(mqClient, gMQTTBase+"/binary_sensor/"+gAlphaEssInstance+"/ChargeConfigState/config", string(res))
+
+	// Don't think we can set an accurate activity based on activity without "delay_on" which is not available via MQTT discovery
+	// delay_on is required as the system may draw some grid power while charging from solar.. but should catch up within 45 seconds.
+	//template:
+	//	-  binary_sensor:
+	//		- name: alphaess1_grid_charging
+	//  	  icon: mdi:battery-charging
+	//		  state: "{%if (states('sensor.alphaess1_batteryrq_load_out')|float<0 and states('sensor.alphaess1_feedin_grid_power_in')|float > 0)%}on{%else%}off{%endif%}"
+	//		  delay_on: 00:00:45
+	//
+	//myHASConfig.StateTopic = gMQTTTopic + "/state"
+	//myHASConfig.DeviceClass = ""
+	//myHASConfig.UnitOfMeasurement = ""
+	//myHASConfig.ValueTemplate = "{%if (states('sensor.alphaess1_batteryrq_load_out')|float<0 and states('sensor.alphaess1_feedin_grid_power_in')|float > 0)%}on{%else%}off{%endif%}"
+	//myHASConfig.Name = gAlphaEssInstance + " - Charging from Grid"
+	//myHASConfig.Icon = "mdi:battery-charging"
+	//myHASConfig.ExpireAfter = DONOTEXPIRE
+	//myHASConfig.PayloadOn = "on"
+	//myHASConfig.PayloadOff = "off"
+	//res, _ = json.Marshal(myHASConfig)
+	//publishMQTT(mqClient, gMQTTBase+"/binary_sensor/"+gAlphaEssInstance+"/chargeFromGrid/config", string(res))
 }

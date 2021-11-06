@@ -154,10 +154,10 @@ var mqtPublishHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 			injectConfigBytes = AddHeaderAndCheckSum(injectConfigBytes, CONFIGHEADER)
 			if gLastCommandRQ.CmdIndex == 0 {
 				gLastCommandRQ.CmdIndex = 51422064
-				gLastCommandRQ.Command = "SetConfig"
 			}
-			gLastCommandRQ.CmdIndex = gLastCommandRQ.CmdIndex + 1
-			injectSetCommand, _ := json.Marshal(gLastCommandRQ)
+			setConfigCmd := CommandRQ{"SetConfig", 0, ""}
+			setConfigCmd.CmdIndex = gLastCommandRQ.CmdIndex + 1
+			injectSetCommand, _ := json.Marshal(setConfigCmd)
 			injectSetCommand = AddHeaderAndCheckSum(injectSetCommand, COMMANDHEADER)
 			injectSuccess1 := AddHeaderAndCheckSum([]byte("{\"Status\":\"Success\"}"), SUCCESSHEADER1)
 			injectSuccess2 := AddHeaderAndCheckSum([]byte("{\"Status\":\"Success\"}"), SUCCESSHEADER2)
@@ -197,11 +197,9 @@ var mqtPublishHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Me
 				lastUpdate: 0,
 			}
 			gActiveConversations = []*conversationType{&configConversation}
-		case COMMANDRQTOPIC:
+		case gCommandRQTopic:
 			DebugLog("MQTT Received on topic " + msg.Topic())
-			if gLastCommandRQ.CmdIndex < 10 {
-				_ = json.Unmarshal(msg.Payload(), &gLastCommandRQ)
-			}
+			_ = json.Unmarshal(msg.Payload(), &gLastCommandRQ)
 		default:
 			InfoLog("Ignored message Received on topic::" + msg.Topic())
 		}
@@ -318,6 +316,13 @@ func init() {
 	gClient = initMQTT()
 }
 
+func publishAlphaEssBytes(body []byte, source string) {
+	obj, _ := UnmarshalJSON(body)
+	if obj != nil {
+		publishAlphaESSStats(obj, source)
+	}
+}
+
 func publishAlphaESSStats(obj Response, source string) (result bool) {
 	var destination string
 	logResponseObject(obj, source)
@@ -345,9 +350,8 @@ func publishAlphaESSStats(obj Response, source string) (result bool) {
 		InfoLog(fmt.Sprint("SRC:"+source+"; MQTT Published::", v))
 	case CommandRQ:
 		gLastCommandRQ = v
-		destination = COMMANDRQTOPIC
 		res, _ := json.Marshal(v)
-		publishMQTT(gClient, gMQTTTopic+destination, string(res))
+		publishMQTT(gClient, gCommandRQTopic, string(res))
 		InfoLog(fmt.Sprint("SRC:"+source+"; MQTT Published::", v))
 	case SerialRQ:
 		gLastSerialRQ = v
@@ -361,3 +365,24 @@ func publishAlphaESSStats(obj Response, source string) (result bool) {
 	}
 	return result
 }
+
+// TODO manage for error condition
+// 2021/10/30 08:15:27 ERROR:EXP:SRC:client: read tcp 127.0.0.1:17777->192.168.168.101:49159: read: connection reset by peer
+//2021/10/30 08:15:27 ERROR:Error writing message: ^A^A^H^@^@^@-{"Command":"SetConfig","CmdIndex":"51422094"}<8d><96>
+//2021/10/30 08:15:27 ERROR:EXP:InjectBytes(): write tcp 127.0.0.1:17777->192.168.168.101:49159: write: broken pipe
+//2021/10/30 08:15:27 ERROR:EXP:SRC:directserver: read tcp 192.168.168.250:50472->52.230.104.147:7777: use of closed network connection
+//2021/10/30 08:15:27 MQTTReadProxyConnection.go:73: : DEBUG : copy(): directserver->client: Op=read, Net=tcp, Addr=52.230.104.147:7777, Err=use of closed network connection
+//2021/10/30 08:15:27 ERROR:EXP:SRC:directserver: close tcp 127.0.0.1:17777->192.168.168.101:49159: use of closed network connection
+//2021/10/30 08:15:27 ERROR:EXP:SRC:directserver: close tcp 192.168.168.250:50472->52.230.104.147:7777: use of closed network connection
+//2021/10/30 08:15:28 any_proxy.go:473: : DEBUG : getOriginalDst(): SO_ORIGINAL_DST=&{Multiaddr:[2 0 30 97 52 230 104 147 0 0 0 0 0 0 0 0] Interface:0}
+//2021/10/30 08:15:28 any_proxy.go:530: : DEBUG : Enter handleDirectConnection: clientConn=&{conn:{fd:0xc000098180}} (*net.TCPConn)
+//2021/10/30 08:15:28 any_proxy.go:558: : DEBUG : DIRECT|192.168.168.101:49153->52.230.104.147:7777|Connected to remote end
+//2021/10/30 08:15:28 WARNING:MQTTInjectProxyConnection: CopyAndInjectProxyConnection() is in testing only!
+//2021/10/30 08:15:28 INFO:MQTT Received on topic homeassistant/sensor/alphaess1/action/chargebattery
+//2021/10/30 08:15:28 INFO:Ignored message Received on topic::homeassistant/sensor/alphaess1/LastCommand
+//
+// {"Command":"Resume","CmdIndex":"32545429"}
+// {"CmdIndex":"33038127","Command":"Resume","Parameter1":"2021/10/30 10:05:36","Parameter2":"4"}
+// {"CmdIndex":"33095589","Command":"Resume","Parameter1":"2021/10/30 10:05:36","Parameter2":"5"}
+// error condition when servers were under maintenance
+// {"MsgType":"System","MsgContent":"System is restart, reason:1 0 1 0 0 0!MAC:BC 97 40 00 6F BA!","Description":"OK"}

@@ -70,6 +70,7 @@ func (into *MQTTInjectProxyConnection) CopyAndInjectProxyConnection(dst io.ReadW
 		buf2 = io.ReadWriteCloser(f)
 		output = io.MultiWriter(dst, mqttDst, buf2)
 	} else {
+		// TODO probably remove this double write and just include below.
 		output = io.MultiWriter(dst, mqttDst)
 	}
 	_, err = into.copyBufferAndFilter(output, src, nil, myFilter)
@@ -124,10 +125,10 @@ func (into *MQTTInjectProxyConnection) copyBufferAndFilter(dst io.Writer, srcRea
 	for {
 		nr, er := src.Read(buf)
 		if nr > 0 {
-			parseAndDebugMessage("FROM:"+filter.getName(), buf[0:nr])
+			msgBody, valid := parseAndDebugMessage("FROM:"+filter.getName(), buf[0:nr])
 			// Apply filter to message received.
 			newBuffer, newResponse := filter.FilterMessages(buf, nr)
-			if newBuffer != nil { // Forward new buffer including any possible changes
+			if newBuffer != nil && valid { // Forward new buffer including any possible changes
 				buf = newBuffer
 				mutex.Lock() // mutex is now required because we could be writing to either stream from each thread.
 				nw, ew := dst.Write(buf[0:nr])
@@ -147,12 +148,14 @@ func (into *MQTTInjectProxyConnection) copyBufferAndFilter(dst io.Writer, srcRea
 					err = io.ErrShortWrite
 					break
 				}
-			} else if newResponse != nil { // DROP message, and RESPOND with new
+			} else if newResponse != nil && valid { // DROP message, and RESPOND with new
+				// publish last message per normal
+				publishAlphaEssBytes(msgBody, filter.getName())
 				mutex.Lock()
 				nrCount := len(newResponse)
 				nw, ew := srcReadWriter.Write(newResponse)
 				mutex.Unlock()
-				parseAndDebugMessage("RESPOND to:"+filter.getName(), newResponse)
+				// not needed parseAndDebugMessage("RESPOND to:"+filter.getName(), newResponse)
 				if nw < 0 || nrCount < nw {
 					nw = 0
 					if ew == nil {
@@ -165,7 +168,7 @@ func (into *MQTTInjectProxyConnection) copyBufferAndFilter(dst io.Writer, srcRea
 					break
 				}
 				DebugLog("Filter:" + filter.getName() + " DROP: '" + string(buf[0:nr]) + "' and RESPOND with:" + string(newResponse))
-			} else {
+			} else if valid {
 				// DROP
 				DebugLog("Filter:" + filter.getName() + " DROP: " + string(buf[0:nr]))
 			}

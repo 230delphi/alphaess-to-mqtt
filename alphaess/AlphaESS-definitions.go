@@ -58,6 +58,8 @@ type StatusRQ struct {
 
 // CommandRQ {"Command":"SetConfig","CmdIndex":"35235904"}
 //	{"Command":"SetConfig","CmdIndex":"49662827","Status":"Success"}
+// 	{"Command":"Resume","CmdIndex":"41787533"}
+//	{"Command":"SyncTime","CmdIndex":"20417060"}
 type CommandRQ struct {
 	Command  string `json:"Command"`
 	CmdIndex int64  `json:"CmdIndex,string"`
@@ -472,14 +474,18 @@ func UnmarshalJSON(rawData []byte) (result Response, err error) {
 	return
 }
 
-func parseAndDebugMessage(context string, msg []byte) (body []byte, head []byte, dataLen int32, checksumU16 uint16) {
+func parseAndDebugMessage(context string, msg []byte) (body []byte, valid bool) {
+	var head []byte
+	var dataLen int32
+	var checksumU16 uint16
 	body, head, dataLen, checksumU16 = parseMessage(msg)
-	if DebugEnabled() {
-		//Crc16Modbus : https://pkg.go.dev/github.com/sigurn/crc16#section-readme
-		DebugLog(fmt.Sprintf("%s: Header: %#v %d\nBody: '%s'", context, head, dataLen, string(body)))
-		ValidateChecksum(msg, checksumU16)
+	if len(body) == int(dataLen) {
+		DebugLog(fmt.Sprintf("%s: VALID LEN: Header: %#v %d\nBody: '%s'", context, head, dataLen, string(body)))
+		return body, ValidateChecksum(msg, checksumU16)
+	} else {
+		DebugLog(fmt.Sprintf("%s: INVALID LEN: Header: %#v %d\nBody: '%s'", context, head, dataLen, string(body)))
+		return nil, false
 	}
-	return body, head, dataLen, checksumU16
 }
 
 func parseMessage(msg []byte) (body []byte, head []byte, dataLen int32, checksumU16 uint16) {
@@ -509,7 +515,6 @@ func ValidateChecksum(fullMsg []byte, checksumU16 uint16) (result bool) {
 		ErrorLog("Failed to read checksum from message.")
 	}
 	if checksumU16 == myCheck {
-		DebugLog(fmt.Sprintf("Checksum: %d", checksumU16))
 		result = true
 	}
 	return result
