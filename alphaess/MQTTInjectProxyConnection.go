@@ -2,7 +2,7 @@ package alphaess
 
 import (
 	"errors"
-	log "github.com/zdannar/flogger"
+	"github.com/230delphi/go-any-proxy/anyproxy"
 	"io"
 	"os"
 	"sync"
@@ -49,11 +49,11 @@ func (into *MQTTInjectProxyConnection) CopyAndInjectProxyConnection(dst io.ReadW
 		myFilter = &PassFilter{}
 	}
 	if dst == nil {
-		log.Debugf("copy(): oops, dst is nil!")
+		DebugLog("copy(): oops, dst is nil!")
 		return
 	}
 	if src == nil {
-		log.Debugf("copy(): oops, src is nil!")
+		DebugLog("copy(): oops, src is nil!")
 		return
 	}
 	var err error
@@ -64,7 +64,7 @@ func (into *MQTTInjectProxyConnection) CopyAndInjectProxyConnection(dst io.ReadW
 	if LogToFile {
 		//TODO test this logging mechanism - needed?
 		myFilename := getUniqueFilename(srcName)
-		log.Debugf("writing file", myFilename)
+		DebugLog("writing file: ", myFilename)
 		f, err := os.Create(myFilename)
 		CheckError(err)
 		buf2 = io.ReadWriteCloser(f)
@@ -79,7 +79,7 @@ func (into *MQTTInjectProxyConnection) CopyAndInjectProxyConnection(dst io.ReadW
 	if buf2 != nil {
 		_ = buf2.Close()
 	}
-	ReportStatistics(err, srcName, dstName)
+	anyproxy.ReportStatistics(err, srcName, dstName)
 	err = dst.Close()
 	ExceptionLog(err, "SRC:"+srcName)
 	err = src.Close()

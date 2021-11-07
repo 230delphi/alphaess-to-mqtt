@@ -1,7 +1,8 @@
 package alphaess
 
 import (
-	log "github.com/zdannar/flogger"
+	"github.com/230delphi/go-any-proxy/anyproxy"
+	log "github.com/sirupsen/logrus"
 	"io"
 	"os"
 )
@@ -53,7 +54,7 @@ func (into *MQTTStubProxyConnection) CopyProxyConnection(dst io.ReadWriteCloser,
 		_ = buf2.Close()
 	}
 
-	ReportStatistics(err, srcName, dstName)
+	anyproxy.ReportStatistics(err, srcName, dstName)
 	err = dst.Close()
 	ExceptionLog(err, "SRC:"+srcName)
 	err = src.Close()

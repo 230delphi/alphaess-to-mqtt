@@ -2,9 +2,8 @@ package alphaess
 
 import (
 	"github.com/230delphi/go-any-proxy/anyproxy"
-	log "github.com/zdannar/flogger"
+	log "github.com/sirupsen/logrus"
 	"io"
-	"net"
 	"os"
 )
 
@@ -58,36 +57,9 @@ func SimpleCopyProxyConnection(dst io.ReadWriteCloser, src io.ReadWriteCloser, d
 		_ = buf2.Close()
 	}
 
-	ReportStatistics(err, srcName, dstName)
+	anyproxy.ReportStatistics(err, srcName, dstName)
 	err = dst.Close()
 	ExceptionLog(err, "SRC:"+srcName)
 	err = src.Close()
 	ExceptionLog(err, "SRC:"+srcName)
-}
-
-func ReportStatistics(err error, srcName string, dstName string) {
-	//TODO move to function in anyproxy
-	if err != nil {
-		if opError, ok := err.(*net.OpError); ok {
-			if srcName == "directserver" || srcName == "proxyserver" {
-				log.Debugf("copy(): %s->%s: Op=%s, Net=%s, Addr=%v, Err=%v", srcName, dstName, opError.Op, opError.Net, opError.Addr, opError.Err)
-			}
-			if opError.Op == "read" {
-				if srcName == "proxyserver" {
-					anyproxy.IncrProxyServerReadErr()
-				}
-				if srcName == "directserver" {
-					anyproxy.IncrDirectServerReadErr()
-				}
-			}
-			if opError.Op == "write" {
-				if srcName == "proxyserver" {
-					anyproxy.IncrProxyServerWriteErr()
-				}
-				if srcName == "directserver" {
-					anyproxy.IncrDirectServerWriteErr()
-				}
-			}
-		}
-	}
 }

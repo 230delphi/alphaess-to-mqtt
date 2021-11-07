@@ -2,7 +2,7 @@ package alphaess
 
 import (
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"strconv"
 	"testing"
 	"time"
@@ -17,6 +17,13 @@ func DebugEnabled() bool {
 		return false
 	}
 }
+func InfoEnabled() bool {
+	if gLoggingLevel > 0 {
+		return true
+	} else {
+		return false
+	}
+}
 
 func CheckError(e error) {
 	if e != nil {
@@ -25,24 +32,24 @@ func CheckError(e error) {
 	}
 }
 
-func DebugLog(msg string) {
+func DebugLog(msg string, a ...interface{}) {
 	if DebugEnabled() {
-		log.Println(msg)
+		log.Debug(fmt.Sprintf(msg, a...))
 	}
 }
 
-func InfoLog(msg string) {
-	if gLoggingLevel > 0 {
-		log.Println("INFO:" + msg)
+func InfoLog(msg string, a ...interface{}) {
+	if InfoEnabled() {
+		log.Infof(msg, a...)
 	}
 }
 
-func ErrorLog(msg string) {
-	log.Println("ERROR:" + msg)
+func ErrorLog(msg string, a ...interface{}) {
+	log.Errorf(msg, a...)
 }
 
-func WarningLog(msg string) {
-	log.Println("WARNING:" + msg)
+func WarningLog(msg string, a ...interface{}) {
+	log.Warningf(msg, a...)
 }
 
 func ExceptionLog(errorResult error, context string) {
