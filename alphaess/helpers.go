@@ -32,7 +32,7 @@ func DebugLog(msg string) {
 }
 
 func InfoLog(msg string) {
-	if gLoggingLevel > 1 {
+	if gLoggingLevel > 0 {
 		log.Println("INFO:" + msg)
 	}
 }
