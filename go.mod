@@ -3,7 +3,7 @@ module main
 go 1.16
 
 require (
-	github.com/230delphi/go-any-proxy v0.0.0-20211107125913-1394c0ee7f16
+	github.com/230delphi/go-any-proxy v0.0.0-20211107152417-8616551fae9f
 	github.com/eclipse/paho.mqtt.golang v1.3.5
 	github.com/ghostiam/binstruct v1.0.1
 	github.com/namsral/flag v1.7.4-pre
