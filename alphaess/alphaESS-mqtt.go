@@ -66,7 +66,7 @@ func initFlagConfig() {
 	flag.StringVar(&gAlphaEssInstance, "AlphaESSID", "alphaess1", "AlphaESS instance name, appended to MQTTTopicBase. All data is set on this topic eg: homeassisant/sensor/alphaess1/config\n")
 	flag.StringVar(&gLogList, "MSGLogging", "", "Messages to Log. Leave unset for no logging. Log all:\"*\"; log selected: \"GenericRQ,CommandIndexRQ,CommandRQ,ConfigRS,StatusRQ\"")
 	flag.StringVar(&gTZLocation, "TZLocation", "Local", "Timezone override to ensure time of collection is accurate.")
-	gMQTTTopic = gTopicBase + gAlphaEssInstance
+	// all variables get "read" after proxy init
 	DebugLog("initFlagConfig complete" + gMQTTBrokerAddress)
 }
 
@@ -123,6 +123,7 @@ func initMQTT() (myClient mqtt.Client) {
 	if !connectClient(myClient) {
 		panic("Failed to connect to MQTT: " + gMQTTBrokerAddress)
 	}
+	gMQTTTopic = gTopicBase + gAlphaEssInstance
 	gChargeBatteryTopic = gMQTTTopic + CHARGEBATTERYTOPIC
 	gCommandRQTopic = gMQTTTopic + COMMANDRQTOPIC
 	return myClient
@@ -291,7 +292,7 @@ func publishMQTT(mqClient mqtt.Client, topic string, msg string) {
 	go func() {
 		var success = t.WaitTimeout(time.Duration(gMQTTTimeoutSeconds) * time.Second)
 		if t.Error() != nil {
-			ErrorLog(fmt.Sprint("Failed to send message: %v\n", t.Error()))
+			ErrorLog(fmt.Sprint("Failed to send message: %v", t.Error()))
 			ExceptionLog(t.Error(), "publishMQTT()")
 		}
 		if !success {
@@ -386,3 +387,7 @@ func publishAlphaESSStats(obj Response, source string) (result bool) {
 // {"CmdIndex":"33095589","Command":"Resume","Parameter1":"2021/10/30 10:05:36","Parameter2":"5"}
 // error condition when servers were under maintenance
 // {"MsgType":"System","MsgContent":"System is restart, reason:1 0 1 0 0 0!MAC:BC 97 40 00 6F BA!","Description":"OK"}
+
+// TODO better error handling for misconfigured or unavailable mqtt
+//[ERROR][MQTT][client]   dial tcp :0: connect: connection refused
+//[WARN] [MQTT]21:29:04 [client]   failed to connect to broker, trying next
