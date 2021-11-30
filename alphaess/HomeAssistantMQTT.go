@@ -65,13 +65,13 @@ func PublishHASEntityConfig() {
 	// distinct grid usage values
 	myHASConfig.Name = gAlphaEssInstance + " - Grid Consumption"
 	myHASConfig.ValueTemplate = "{%set mylist = states('sensor." + gAlphaEssInstance +
-		"_feedin_grid_power_in')|float, 0|float,%}{{ mylist|max|float }}"
+		"_feedin_grid_power_in')|float(default=0), 0|float,%}{{ mylist|max|float }}"
 	myHASConfig.ExpireAfter = DONOTEXPIRE
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTTopic+"/PmeterGridIn/config", string(res))
 	myHASConfig.Name = gAlphaEssInstance + " - Grid Return"
 	myHASConfig.ValueTemplate = "{%set mylist = states('sensor." + gAlphaEssInstance +
-		"_feedin_grid_power_in')|float * -1, 0|float,%}{{ mylist|max|float }}"
+		"_feedin_grid_power_in')|float(default=0) * -1, 0|float,%}{{ mylist|max|float }}"
 	myHASConfig.ExpireAfter = DONOTEXPIRE
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTTopic+"/PmeterGridOut/config", string(res))
@@ -96,13 +96,13 @@ func PublishHASEntityConfig() {
 	// distinct battery values
 	myHASConfig.Name = gAlphaEssInstance + " - Battery Load"
 	myHASConfig.ValueTemplate = "{%set mylist = states('sensor." + gAlphaEssInstance +
-		"_batteryrq_load_out')|float, 0|float,%}{{ mylist|max|float }}"
+		"_batteryrq_load_out')|float(default=0), 0|float,%}{{ mylist|max|float }}"
 	myHASConfig.ExpireAfter = DONOTEXPIRE
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTTopic+"/PBatLoad/config", string(res))
 	myHASConfig.Name = gAlphaEssInstance + " - Battery Charge"
 	myHASConfig.ValueTemplate = "{%set mylist = states('sensor." + gAlphaEssInstance +
-		"_batteryrq_load_out')|float * -1, 0|float,%}{{ mylist|max|float }}"
+		"_batteryrq_load_out')|float(default=0) * -1, 0|float,%}{{ mylist|max|float }}"
 	myHASConfig.ExpireAfter = DONOTEXPIRE
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTTopic+"/PBatCharging/config", string(res))
@@ -161,17 +161,17 @@ func PublishHASEntityConfig() {
 
 	// TEMPLATE: mdi:solar-power AlphaESS-TotalSolar
 	myHASConfig.Name = gAlphaEssInstance + " TotalSolar"
-	myHASConfig.ValueTemplate = "{{states('sensor." + gAlphaEssInstance + "_power_from_pv1')|int + " +
-		"states('sensor." + gAlphaEssInstance + "_power_from_pv2')|int}}"
+	myHASConfig.ValueTemplate = "{{states('sensor." + gAlphaEssInstance + "_power_from_pv1')|int(default=0) + " +
+		"states('sensor." + gAlphaEssInstance + "_power_from_pv2')|int(default=0)}"
 	myHASConfig.Icon = "mdi:solar-power"
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTTopic+"/PTotal/config", string(res))
 
 	// composite load value
 	myHASConfig.Name = gAlphaEssInstance + " Total Load"
-	myHASConfig.ValueTemplate = "{{states('sensor." + gAlphaEssInstance + "_totalsolar')|int + " +
-		"states('sensor." + gAlphaEssInstance + "_feedin_grid_power_in')|int + " +
-		"states('sensor." + gAlphaEssInstance + "_batteryrq_load_out')|int}}"
+	myHASConfig.ValueTemplate = "{{states('sensor." + gAlphaEssInstance + "_totalsolar')|int(default=0) + " +
+		"states('sensor." + gAlphaEssInstance + "_feedin_grid_power_in')|int(default=0) + " +
+		"states('sensor." + gAlphaEssInstance + "_batteryrq_load_out')|int(default=0)}}"
 	myHASConfig.Icon = "mdi:power-socket-uk"
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTTopic+"/LoadTotal/config", string(res))
@@ -188,6 +188,8 @@ func PublishHASEntityConfig() {
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTBase+"/binary_sensor/"+gAlphaEssInstance+"/ChargeConfigState/config", string(res))
 
+	//TODO create all special sensors via Rest API. below, and the Integrations/others required for Energy panel.
+	//
 	// Don't think we can set an accurate activity based on activity without "delay_on" which is not available via MQTT discovery
 	// delay_on is required as the system may draw some grid power while charging from solar.. but should catch up within 45 seconds.
 	//template:
