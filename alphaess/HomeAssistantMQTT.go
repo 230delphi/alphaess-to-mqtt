@@ -162,7 +162,7 @@ func PublishHASEntityConfig() {
 	// TEMPLATE: mdi:solar-power AlphaESS-TotalSolar
 	myHASConfig.Name = gAlphaEssInstance + " TotalSolar"
 	myHASConfig.ValueTemplate = "{{states('sensor." + gAlphaEssInstance + "_power_from_pv1')|int(default=0) + " +
-		"states('sensor." + gAlphaEssInstance + "_power_from_pv2')|int(default=0)}"
+		"states('sensor." + gAlphaEssInstance + "_power_from_pv2')|int(default=0)}}"
 	myHASConfig.Icon = "mdi:solar-power"
 	res, _ = json.Marshal(myHASConfig)
 	publishMQTT(mqClient, gMQTTTopic+"/PTotal/config", string(res))
