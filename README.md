@@ -13,7 +13,7 @@ Further work could simply fake the server and disconnect from the internet entir
 The goal of this implementation is to gather all data from the system and eventually lead to independence from the cloud systems. For many, Charles Gillanders [API polling](https://github.com/CharlesGillanders/alphaess) implementation is more suitable - it is easier to configure and less susceptible breaking due to minor changes by the provider.
 
 **Note:** This is the core library implementation. Simplest installation is via the [HA Addon](https://github.com/230delphi/hassio-addons/tree/main/alphaess-proxy-addon).
-Example use can be seen [here](example_use/index.md).
+Example use can be seen [here](example_use/README.md).
 
 # Overview
 
