@@ -19,7 +19,7 @@ This page documents a more advanced interface to the system.
 1. **Reporting/Data Display:** All AlphaESS data is collected (every 10seconds) and available for display via HA custom dashboards. 
 
    *Per the example below, a custom dashboard shows the current Energy produced (1,749W), that the battery is charging (679W) and load usage by the house. The lower Graphs show solar production (in yellow), forecasted production (white dashed line), usage from the grid (blue) or battery charging (red).*
-   ![images/Home Assistant-ScreenShot1.jpg](images/Home Assistant-ScreenShot1.jpg)
+   ![images/HomeAssistant-ScreenShot1.jpg](images/HomeAssistant-ScreenShot1.jpg)
 
 
 2. **Action based on status:** Combining this data with other elements of the system you can trigger events or notifications.
