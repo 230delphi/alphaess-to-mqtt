@@ -84,6 +84,7 @@ proxyConnection=MQTTInjectProxyConnection
 ### 2. Configure Network Routing to Proxy
 This depends on your setup.
 * **Direct Proxy:** Configure your AlphaESS system with a new destination IP - your proxy server
+  * If there is no setting option the IP address is determined via DNS query of www.alphaess.com. (Example Smile S6)
 * **Transparent Proxy:** Configure your gateway to forward traffic bound for AlphaESS Cloud (52.230.104.147:7777) to go to your proxy.
 
 ### 3. Configure Home Assistant Values for Energy Dashboard
